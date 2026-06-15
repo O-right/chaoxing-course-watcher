@@ -17,17 +17,18 @@ This repository now contains only the course-watching workflow. The active local
 - `python -m py_compile main.py` passed in this standalone clone.
 - `python main.py --help` passed in this standalone clone.
 - `git diff --check` passed after adding handoff docs.
+- Local `.env` was copied from the former combined workspace and is ignored by Git.
 - Local Git status was clean before adding these handoff docs.
 
 ## Next Steps
 
 - Use this repository for future course-watcher changes and commits.
-- Copy or recreate local `.env` only outside Git if live runs are needed.
+- Keep local `.env` outside Git; recreate it only if the file is deleted or credentials change.
 - Run `python main.py --help` and a bounded course smoke before claiming any new live behavior.
 
 ## Blockers And Cautions
 
-- No `.env` was copied into this repository during the split.
+- `.env` exists locally for this clone but is intentionally ignored and must not be committed or printed.
 - Do not claim new live completion without a fresh configured run.
 - The removed tutai deployment is not a viable current runner until its Chaoxing network block is resolved.
 
