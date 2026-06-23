@@ -1,7 +1,59 @@
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local configuration and secrets
 .env
-*.log
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.token
+secrets.*
+credentials.*
+
+# Runtime data
 logs/
-dist/
+*.log
+screenshots/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.mp4
+*.jsonl
 tmp_*.json
+
+# Browser / session artifacts
+playwright/.auth/
+storage_state*.json
+cookies*.json
+user_data_dir/
+.cache/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
