@@ -17,3 +17,9 @@ Reason: The course watcher requires private account and course configuration for
 Decision: Continue requiring real video end states, checked no-next completion paths, and bounded live evidence before claiming course completion.
 
 Reason: Previous Chaoxing runs showed false-completion risks from no-next pages, early near-end advancement, true no-source videos, and mixed courseware/video resource cards.
+
+## 2026-06-27: Course Selection Uses Scored Candidates
+
+Decision: Course-name lookup should collect visible course candidates, score normalized title/text variants, and reject close ambiguous matches instead of clicking the first partial text match. `CX_COURSE_URL` / `--course-url` is the exact-entry fallback when keyword matching is uncertain.
+
+Reason: Short keywords such as a subject name can match multiple course cards. Failing with candidate diagnostics is safer than opening the wrong course, while direct URLs preserve a deterministic path for authorized known courses.

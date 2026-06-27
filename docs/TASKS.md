@@ -13,6 +13,15 @@
 - [x] Verify local branch tracks `origin/main`.
 - [x] Run `python -m py_compile main.py`.
 - [x] Run `python main.py --help` after doc sync.
+- [x] Add regression coverage for closed-page video progress and screenshot guards.
+- [x] Run `python -m unittest discover -s tests` after the closed-page guard change.
+- [x] Run `python -m py_compile main.py tests\test_closed_page_guards.py` after the closed-page guard change.
+- [x] Run `python main.py --help` after the closed-page guard change.
+- [x] Add deterministic coverage for course keyword expansion, candidate scoring, ambiguity handling, and low-similarity rejection.
+- [x] Run `python -m unittest discover -s tests` after the course-matching change.
+- [x] Run `python -m py_compile main.py tests\test_closed_page_guards.py tests\test_course_matching.py` after the course-matching change.
+- [x] Run `python main.py --help` after adding `--course-url`.
+- [x] Run bounded live course-opening smoke for `中国现代史纲要` matching `中国近现代史纲要` without entering chapters or watching videos.
 - [ ] Run a bounded live course smoke only when credentials and authorization are available.
 
 ## Future Work

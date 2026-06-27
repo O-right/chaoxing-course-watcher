@@ -27,6 +27,12 @@ Or run the Python entry directly:
 python main.py --course "课程名称关键词" --max-chapters 200 --headless --fast-actions --browser-channel chrome
 ```
 
+If course-name matching is ambiguous, pass a more complete course name or use a private URL from your local environment:
+
+```powershell
+python main.py --course-url $env:CX_COURSE_URL --headless --fast-actions --browser-channel chrome
+```
+
 Useful checks:
 
 ```powershell
