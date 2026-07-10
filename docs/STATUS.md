@@ -8,7 +8,7 @@ Open-source release is complete. The reviewed changes are on `main`, and the Git
 
 This repository now contains only the course-watching workflow. The active local clone is `D:\chaoxing_course_watcher`, tracking `git@github.com:O-right/chaoxing-course-watcher.git`. The old combined workspace at `D:\course_rpa_node` should be treated as a handoff/archive location, not the normal place for course-watcher commits.
 
-The public `main` branch combines course-matching and closed-page guards with a Chinese README, privacy-safe logging, explicit course configuration, conservative public defaults, pinned dependencies, offline CI, Dependabot, an MIT license, and an open-source readiness report. The owner accepts the existing author-email and course-validation metadata in Git history. The README and GitHub description use `学习通自动刷课脚本`, while the stable repository slug remains `chaoxing-course-watcher`.
+The public `main` branch combines course-matching and closed-page guards with a Chinese README, privacy-safe logging, explicit course configuration, conservative public defaults, pinned dependencies, offline CI, Dependabot, an MIT license, and an open-source readiness report. The README and GitHub description use `学习通自动刷课脚本`, while the stable repository slug remains `chaoxing-course-watcher`. No release work is active; the next repository work is dependency maintenance or a bounded authorized live verification.
 
 ## Recent Evidence
 
@@ -24,7 +24,7 @@ The public `main` branch combines course-matching and closed-page guards with a 
 - Pinned dependencies resolved locally and `python -m pip check` passed.
 - README structure, CI permissions, full-SHA Action pins, Dependabot configuration, secret-pattern checks, ignore checks, and `git diff --check` passed.
 - A custom scan of the complete reachable Git history found no sensitive-path files, high-confidence credentials, course-ID URL parameters, or mobile-number patterns.
-- GitHub Actions run `29083118433` passed Python 3.10 and 3.11 dependency installation, 14 tests, compilation, and Chinese CLI help on Windows.
+- GitHub Actions run `29097294731` passed Python 3.10 and 3.11 dependency installation, 14 tests, compilation, and Chinese CLI help on Windows for public `main` commit `2b87b0a`.
 - Added standard MIT license with `Copyright (c) 2026 O-right`.
 - Verified gitleaks `8.30.1` official archive SHA256; Git-history and working-directory scans both reported no leaks.
 - pip-audit `2.10.1` found `CVE-2026-28684` in `python-dotenv==1.2.1`; upgrading to `1.2.2` cleared the audit to zero known vulnerabilities.
@@ -32,9 +32,12 @@ The public `main` branch combines course-matching and closed-page guards with a 
 - A bounded authorized course-opening smoke previously verified similarity matching without entering chapters or processing videos.
 - PR #1 merged to `main` as `89409808fed66cd9beb7ee88b0f7e0f31ad90e92`; the pull-request and post-merge Python 3.10/3.11 CI runs passed.
 - GitHub reports the repository as public with description `学习通自动刷课脚本`; local `main` and `origin/main` matched after publication.
+- Dependabot opened PR #2 for `actions/setup-python 6.3.0`, PR #3 for `actions/checkout 7.0.0`, and PR #4 for `playwright 1.61.0`; none has been reviewed or merged yet.
 
 ## Next Steps
 
+- Review Dependabot PR #2 and #3 to move GitHub Actions off the Node.js 20 compatibility path.
+- Review the Playwright `1.61.0` change and CI evidence in Dependabot PR #4 before merging it separately.
 - Re-run the target course in a bounded live session to confirm the closed-page guard behavior in the real Chaoxing flow.
 - Use headed mode with manual verification wait if the platform presents a visible verification or the browser closes during a headless run.
 - Keep local `.env` outside Git and do not print or commit private course URLs.
@@ -46,7 +49,7 @@ The public `main` branch combines course-matching and closed-page guards with a 
 - Do not claim new live completion without a fresh configured run.
 - The reported closed-page failure has local guard coverage, but the exact live Chaoxing course path has not been re-run after the fix.
 - The course-matching optimization has deterministic unit coverage and one bounded live course-opening smoke, but not full course-flow validation.
-- PR #1 is merged and the public default branch is `main`.
+- The latest CI passes, but GitHub annotates the pinned current Actions for Node.js 20 deprecation; Dependabot PR #2 and #3 are the pending upgrade path.
 - The removed tutai deployment is not a viable current runner until its Chaoxing network block is resolved.
 
 ## Active Files

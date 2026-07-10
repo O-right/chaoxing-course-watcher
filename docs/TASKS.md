@@ -49,6 +49,9 @@
 
 ## Future Work
 
+- [ ] Review and merge Dependabot PR #2 (`actions/setup-python 6.3.0`) after its diff and CI pass review.
+- [ ] Review and merge Dependabot PR #3 (`actions/checkout 7.0.0`) after its diff and CI pass review.
+- [ ] Review Dependabot PR #4 (`playwright 1.61.0`) independently and verify tests before merging.
 - [ ] Add structured logging if long-run diagnostics need cleaner output.
 - [ ] Add selector profiles only if another course platform becomes a real requirement.
 - [ ] Re-evaluate tutai or another remote runner only after a viable Chaoxing network path is available.
