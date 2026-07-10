@@ -25,7 +25,7 @@
 - [x] Integrate latest `origin/main` open-source hardening into the feature branch and resolve the README conflict.
 - [x] Preserve `--course-url` documentation and add `CX_COURSE_URL` to the safe environment template.
 - [x] Re-run 9 unit tests, Python compilation, CLI help, ignore/template checks, and staged diff checks after integration.
-- [ ] Review and merge PR #1 after GitHub confirms the synchronized branch is conflict-free.
+- [x] Review and merge PR #1 after GitHub confirms the synchronized branch is conflict-free.
 - [ ] Run a bounded live course smoke only when credentials and authorization are available.
 
 ## Open Source Preparation
@@ -44,7 +44,8 @@
 - [x] Run pip-audit, upgrade vulnerable `python-dotenv` from `1.2.1` to `1.2.2`, and confirm zero known vulnerabilities.
 - [x] Push the branch and confirm Python 3.10/3.11 GitHub Actions passes.
 - [x] Owner reviews and approves the final Chinese README and repository publication.
-- [ ] Review and merge PR #1 before changing repository visibility.
+- [x] Review and merge PR #1 before changing repository visibility.
+- [x] Set the GitHub description to `学习通自动刷课脚本` and publish the repository.
 
 ## Future Work
 

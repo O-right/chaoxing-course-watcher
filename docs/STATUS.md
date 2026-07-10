@@ -2,13 +2,13 @@
 
 ## Current Phase
 
-Open-source release is approved and the final publication workflow is in progress; the GitHub repository remains private until the reviewed branch is merged.
+Open-source release is complete. The reviewed changes are on `main`, and the GitHub repository is public.
 
 ## Current Focus
 
 This repository now contains only the course-watching workflow. The active local clone is `D:\chaoxing_course_watcher`, tracking `git@github.com:O-right/chaoxing-course-watcher.git`. The old combined workspace at `D:\course_rpa_node` should be treated as a handoff/archive location, not the normal place for course-watcher commits.
 
-The `codex/course-matching-guards` branch now combines course-matching and closed-page guards with a Chinese public README, privacy-safe logging, explicit course configuration, conservative public defaults, pinned dependencies, offline CI, Dependabot, an MIT license, and an open-source readiness report. The owner accepts the existing author-email and course-validation metadata in Git history. The owner approved the README and publication on 2026-07-10; the README display title is `学习通自动刷课脚本`, while the stable repository slug remains `chaoxing-course-watcher`.
+The public `main` branch combines course-matching and closed-page guards with a Chinese README, privacy-safe logging, explicit course configuration, conservative public defaults, pinned dependencies, offline CI, Dependabot, an MIT license, and an open-source readiness report. The owner accepts the existing author-email and course-validation metadata in Git history. The README and GitHub description use `学习通自动刷课脚本`, while the stable repository slug remains `chaoxing-course-watcher`.
 
 ## Recent Evidence
 
@@ -30,12 +30,11 @@ The `codex/course-matching-guards` branch now combines course-matching and close
 - pip-audit `2.10.1` found `CVE-2026-28684` in `python-dotenv==1.2.1`; upgrading to `1.2.2` cleared the audit to zero known vulnerabilities.
 - After the final README merge, 14 unit tests, Python compilation, direct and PowerShell CLI help, `pip check`, README fence/link checks, tracked-path privacy checks, and `git diff --check` passed locally.
 - A bounded authorized course-opening smoke previously verified similarity matching without entering chapters or processing videos.
+- PR #1 merged to `main` as `89409808fed66cd9beb7ee88b0f7e0f31ad90e92`; the pull-request and post-merge Python 3.10/3.11 CI runs passed.
+- GitHub reports the repository as public with description `学习通自动刷课脚本`; local `main` and `origin/main` matched after publication.
 
 ## Next Steps
 
-- Push the locally resolved release branch and wait for Python 3.10/3.11 GitHub Actions.
-- Mark PR #1 ready and merge it to `main` after required checks pass.
-- Set the GitHub description to `学习通自动刷课脚本`, change visibility to public, and verify the public default branch.
 - Re-run the target course in a bounded live session to confirm the closed-page guard behavior in the real Chaoxing flow.
 - Use headed mode with manual verification wait if the platform presents a visible verification or the browser closes during a headless run.
 - Keep local `.env` outside Git and do not print or commit private course URLs.
@@ -47,7 +46,7 @@ The `codex/course-matching-guards` branch now combines course-matching and close
 - Do not claim new live completion without a fresh configured run.
 - The reported closed-page failure has local guard coverage, but the exact live Chaoxing course path has not been re-run after the fix.
 - The course-matching optimization has deterministic unit coverage and one bounded live course-opening smoke, but not full course-flow validation.
-- PR #1 remains a Draft and GitHub still reports the old remote branch as conflicting until the locally resolved merge is pushed.
+- PR #1 is merged and the public default branch is `main`.
 - The removed tutai deployment is not a viable current runner until its Chaoxing network block is resolved.
 
 ## Active Files
