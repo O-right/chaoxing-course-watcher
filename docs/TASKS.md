@@ -43,7 +43,7 @@
 - [x] Verify official gitleaks checksum and pass Git-history plus working-directory scans.
 - [x] Run pip-audit, upgrade vulnerable `python-dotenv` from `1.2.1` to `1.2.2`, and confirm zero known vulnerabilities.
 - [x] Push the branch and confirm Python 3.10/3.11 GitHub Actions passes.
-- [ ] Owner reviews the final Chinese README.
+- [x] Owner reviews and approves the final Chinese README and repository publication.
 - [ ] Review and merge PR #1 before changing repository visibility.
 
 ## Future Work

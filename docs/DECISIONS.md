@@ -31,3 +31,9 @@ Decision: Public builds require explicit course configuration, redact URL paths 
 Reason: A reusable public repository should not target a specific course, disclose private course identifiers in diagnostics, silently accept learning commitments, or publish without clear reuse terms and an explicit decision about historical personal metadata.
 
 Release choice: Use the MIT License with `Copyright (c) 2026 O-right`. The owner accepts the existing non-noreply author email and named course evidence in Git history, so the repository will not rewrite existing commits before publication.
+
+## 2026-07-10: Use A Chinese Public Display Name And Stable Repository Slug
+
+Decision: Present the project as `学习通自动刷课脚本` in the README heading and GitHub repository description, while retaining the existing `chaoxing-course-watcher` repository slug.
+
+Reason: The Chinese display name states the project's purpose directly. Keeping the existing slug avoids breaking clone commands, links, and the already-open pull request immediately before publication.
