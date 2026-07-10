@@ -21,12 +21,28 @@
 - [x] Run `python -m unittest discover -s tests` after the course-matching change.
 - [x] Run `python -m py_compile main.py tests\test_closed_page_guards.py tests\test_course_matching.py` after the course-matching change.
 - [x] Run `python main.py --help` after adding `--course-url`.
-- [x] Run bounded live course-opening smoke for `中国现代史纲要` matching `中国近现代史纲要` without entering chapters or watching videos.
+- [x] Run a bounded authorized course-opening smoke without entering chapters or watching videos.
 - [x] Integrate latest `origin/main` open-source hardening into the feature branch and resolve the README conflict.
 - [x] Preserve `--course-url` documentation and add `CX_COURSE_URL` to the safe environment template.
 - [x] Re-run 9 unit tests, Python compilation, CLI help, ignore/template checks, and staged diff checks after integration.
 - [ ] Review and merge PR #1 after GitHub confirms the synchronized branch is conflict-free.
 - [ ] Run a bounded live course smoke only when credentials and authorization are available.
+
+## Open Source Preparation
+
+- [x] Rewrite README in Chinese with project purpose, setup, usage, limits, privacy guidance, and Star request.
+- [x] Redact private URL details from page, candidate, navigation, and exception logs.
+- [x] Require explicit course configuration and use conservative playback/commitment defaults.
+- [x] Pin verified Python dependency versions.
+- [x] Add read-only offline GitHub Actions checks and weekly Dependabot updates.
+- [x] Scan the current tree and all Git commits with custom sensitive-path and credential rules.
+- [x] Add `security_best_practices_report.md`.
+- [x] Run 14 unit tests, compilation, direct/launcher CLI help, dependency, README, CI, ignore, secret-pattern, and diff checks.
+- [ ] Select and add `LICENSE`.
+- [ ] Decide whether existing author-email and course metadata in Git history is acceptable.
+- [ ] Run dedicated gitleaks and dependency vulnerability scans.
+- [ ] Push the branch and confirm GitHub Actions passes.
+- [ ] Review and merge PR #1 before changing repository visibility.
 
 ## Future Work
 

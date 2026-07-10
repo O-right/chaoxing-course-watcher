@@ -13,7 +13,9 @@ This repository is a single-workflow Python + Playwright project for Chaoxing co
   - PowerShell launcher.
   - Loads local `.env` values when present and forwards CLI arguments to `main.py`.
 - `requirements.txt`
-  - Declares Playwright and `python-dotenv`.
+  - Pins the locally verified Playwright and `python-dotenv` versions.
+- `.github/`
+  - Runs offline Python 3.10/3.11 checks on Windows and schedules dependency updates.
 - `docs/`
   - Current status, tasks, architecture, decisions, and product scope for handoff.
 
@@ -37,6 +39,9 @@ This repository is a single-workflow Python + Playwright project for Chaoxing co
 ## Configuration And Secrets
 
 - Local `.env` and runtime environment variables hold private configuration.
+- Course targets must be configured explicitly; no course is selected by default.
+- URL paths, query values, and fragments are redacted from terminal diagnostics.
+- Automatic commitment confirmation is disabled by default.
 - `.env`, logs, screenshots, browser profiles, cookies, tokens, and private URLs must remain untracked.
 - This repository's remote is `git@github.com:O-right/chaoxing-course-watcher.git`.
 
@@ -44,5 +49,7 @@ This repository is a single-workflow Python + Playwright project for Chaoxing co
 
 - Baseline: `python -m py_compile main.py`.
 - CLI smoke: `python main.py --help`.
+- Unit suite: `python -m unittest discover -s tests`.
+- PowerShell forwarding smoke: `.\run_chaoxing.ps1 --help`.
 - Use local/offline Playwright fixtures for selector and recovery changes when practical.
 - Use bounded live Chaoxing runs only when authorized and configured.

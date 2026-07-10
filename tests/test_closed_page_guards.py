@@ -3,11 +3,14 @@ import io
 import unittest
 from contextlib import redirect_stdout
 
-from main import CONFIG, CourseAutoTester
+from main import CONFIG, CourseAutoTester, redact_url_for_log, redact_urls_in_text
 
 
 class ClosedPage:
-    def __init__(self, url="https://mooc1.chaoxing.com/mycourse/studentstudy"):
+    def __init__(
+        self,
+        url="https://mooc1.chaoxing.com/mycourse/studentstudy?courseid=private-course&clazzid=private-class",
+    ):
         self.url = url
         self.locator_called = False
         self.screenshot_called = False
@@ -51,6 +54,9 @@ class ClosedPageGuardTests(unittest.TestCase):
 
         self.assertFalse(page.screenshot_called)
         self.assertEqual(output.getvalue().count("浏览器页面已关闭"), 1)
+        self.assertNotIn("private-course", output.getvalue())
+        self.assertNotIn("private-class", output.getvalue())
+        self.assertIn("https://mooc1.chaoxing.com/<redacted>", output.getvalue())
 
     def test_find_locator_returns_none_without_querying_closed_page(self):
         tester = self.make_tester()
@@ -73,6 +79,39 @@ class ClosedPageGuardTests(unittest.TestCase):
 
         self.assertIsNone(result)
         self.assertFalse(stale_video.evaluate_called)
+
+
+class LogRedactionTests(unittest.TestCase):
+    def test_redact_url_for_log_removes_path_query_and_fragment(self):
+        result = redact_url_for_log(
+            "https://mooc1.chaoxing.com/mycourse/studentstudy?courseid=private#chapter"
+        )
+
+        self.assertEqual(result, "https://mooc1.chaoxing.com/<redacted>")
+
+    def test_redact_url_for_log_removes_embedded_userinfo(self):
+        result = redact_url_for_log(
+            "https://private-user:private-password@mooc1.chaoxing.com:443/course"
+        )
+
+        self.assertEqual(result, "https://mooc1.chaoxing.com:443/<redacted>")
+
+    def test_redact_urls_in_text_sanitizes_navigation_error(self):
+        result = redact_urls_in_text(
+            "Page.goto failed for https://mooc1.chaoxing.com/course?clazzid=private-class"
+        )
+
+        self.assertEqual(
+            result,
+            "Page.goto failed for https://mooc1.chaoxing.com/<redacted>",
+        )
+
+    def test_redact_urls_in_text_sanitizes_websocket_endpoint(self):
+        result = redact_urls_in_text(
+            "Browser endpoint wss://private-user:private-password@browser.example/ws?token=private"
+        )
+
+        self.assertEqual(result, "Browser endpoint wss://browser.example/<redacted>")
 
 
 if __name__ == "__main__":

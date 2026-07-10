@@ -8,6 +8,7 @@ import time
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from playwright.sync_api import Error as PlaywrightError
@@ -16,6 +17,9 @@ from playwright.sync_api import sync_playwright
 
 
 load_dotenv()
+
+
+LOG_URL_PATTERN = re.compile(r"(?:https?|wss?)://[^\s<>'\"]+")
 
 
 def env_flag(name: str, default: str = "false") -> bool:
@@ -36,6 +40,31 @@ def env_float(name: str, default: float) -> float:
         return default
 
 
+def redact_url_for_log(url: str) -> str:
+    value = str(url or "").strip()
+    if not value:
+        return "<empty-url>"
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return "<redacted-url>"
+    if parsed.scheme.lower() not in {"http", "https", "ws", "wss"} or not parsed.hostname:
+        return "<redacted-url>"
+    hostname = parsed.hostname
+    if ":" in hostname and not hostname.startswith("["):
+        hostname = f"[{hostname}]"
+    try:
+        port = parsed.port
+    except ValueError:
+        return "<redacted-url>"
+    authority = f"{hostname}:{port}" if port is not None else hostname
+    return f"{parsed.scheme.lower()}://{authority}/<redacted>"
+
+
+def redact_urls_in_text(value: Any) -> str:
+    return LOG_URL_PATTERN.sub(lambda match: redact_url_for_log(match.group(0)), str(value))
+
+
 CONFIG: Dict[str, Any] = {
     # 账号和密码从本地 .env 或环境变量读取，避免把真实凭据写入代码。
     "login_url": os.getenv(
@@ -44,10 +73,10 @@ CONFIG: Dict[str, Any] = {
     ),
     "username": os.getenv("CX_USERNAME", ""),
     "password": os.getenv("CX_PASSWORD", ""),
-    "course_keyword": os.getenv("CX_COURSE_KEYWORD", "“四史”专题课"),
+    "course_keyword": os.getenv("CX_COURSE_KEYWORD", ""),
     "course_url": os.getenv("CX_COURSE_URL", ""),
     "chapter_keyword": os.getenv("CX_CHAPTER_KEYWORD", ""),
-    "playback_rate": env_float("CX_PLAYBACK_RATE", 2.0),
+    "playback_rate": env_float("CX_PLAYBACK_RATE", 1.0),
     "browser_channel": os.getenv("CX_BROWSER_CHANNEL", ""),
     "browser_executable_path": os.getenv("CX_BROWSER_EXECUTABLE_PATH", ""),
     "headless": env_flag("CX_HEADLESS"),
@@ -66,7 +95,7 @@ CONFIG: Dict[str, Any] = {
     "max_video_wait_seconds": env_int("CX_MAX_VIDEO_WAIT_SECONDS", 6 * 60 * 60),
     "max_chapters": env_int("CX_MAX_CHAPTERS", 100),
     "stop_when_no_next": env_flag("CX_STOP_WHEN_NO_NEXT", "true"),
-    "auto_commitment": env_flag("CX_AUTO_COMMITMENT", "true"),
+    "auto_commitment": env_flag("CX_AUTO_COMMITMENT", "false"),
     "commitment_timeout_ms": env_int("CX_COMMITMENT_TIMEOUT_MS", 10_000),
     "next_navigation_timeout_ms": env_int("CX_NEXT_NAVIGATION_TIMEOUT_MS", 10_000),
     "courseware_hold_seconds": env_float("CX_COURSEWARE_HOLD_SECONDS", 1.0),
@@ -177,7 +206,7 @@ class CourseAutoTester:
                 try:
                     resource.close()
                 except PlaywrightError as exc:
-                    print(f"关闭资源时出现异常: {exc}")
+                    print(f"关闭资源时出现异常: {redact_urls_in_text(exc)}")
         if hasattr(self, "playwright"):
             self.playwright.stop()
 
@@ -189,7 +218,10 @@ class CourseAutoTester:
                 return True
         except PlaywrightError as exc:
             if not self.page_unavailable_reported:
-                print(f"{description or '页面操作'} 无法继续: 无法读取浏览器页面状态: {exc}")
+                print(
+                    f"{description or '页面操作'} 无法继续: 无法读取浏览器页面状态: "
+                    f"{redact_urls_in_text(exc)}"
+                )
                 self.page_unavailable_reported = True
             return False
 
@@ -199,7 +231,10 @@ class CourseAutoTester:
                 current_url = self.page.url
             except PlaywrightError:
                 current_url = "<无法读取 URL>"
-            print(f"{description or '页面操作'} 无法继续: 浏览器页面已关闭，url={current_url}")
+            print(
+                f"{description or '页面操作'} 无法继续: 浏览器页面已关闭，"
+                f"url={redact_url_for_log(current_url)}"
+            )
             self.page_unavailable_reported = True
         return False
 
@@ -218,7 +253,7 @@ class CourseAutoTester:
             self.page.screenshot(path=str(path), full_page=True)
             print(f"已保存调试截图: {path}")
         except (OSError, PlaywrightError) as exc:
-            print(f"保存调试截图失败 [{label}]: {exc}")
+            print(f"保存调试截图失败 [{label}]: {redact_urls_in_text(exc)}")
 
     def locator(self, selector: str, **values: str) -> Locator:
         if not self.page:
@@ -500,7 +535,7 @@ class CourseAutoTester:
                     f"term={candidate.get('matched_term')}, "
                     f"source={candidate.get('source')}, "
                     f"text={candidate.get('display_text')}, "
-                    f"href={candidate.get('href') or ''}"
+                    f"href={redact_url_for_log(str(candidate.get('href') or ''))}"
                 )
             return None, "", "ambiguous", "", status
 
@@ -548,7 +583,7 @@ class CourseAutoTester:
                 current_title = "<无法读取标题>"
             print(
                 f"未找到元素 [{description}]，selector={resolved}，"
-                f"title={current_title}，url={current_url}，frames={last_frame_count}"
+                f"title={current_title}，url={redact_url_for_log(current_url)}，frames={last_frame_count}"
             )
         return None
 
@@ -567,7 +602,7 @@ class CourseAutoTester:
             print(f"已输入: {description}")
             return True
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"输入失败 [{description}]: {exc}")
+            print(f"输入失败 [{description}]: {redact_urls_in_text(exc)}")
             return False
 
     def safe_click(self, target: Locator, description: str) -> bool:
@@ -578,7 +613,7 @@ class CourseAutoTester:
             print(f"已点击: {description}")
             return True
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"点击失败 [{description}]: {exc}")
+            print(f"点击失败 [{description}]: {redact_urls_in_text(exc)}")
             return False
 
     def safe_click_selector(self, selector: str, description: str, **values: str) -> bool:
@@ -644,7 +679,10 @@ class CourseAutoTester:
             time.sleep(0.5)
 
         current_url = self.page.url if self.page else ""
-        print(f"滚动查找后仍未找到 [{description}: {text}]，url={current_url}")
+        print(
+            f"滚动查找后仍未找到 [{description}: {text}]，"
+            f"url={redact_url_for_log(current_url)}"
+        )
         return None
 
     def chapter_catalog_selectors(self) -> list[str]:
@@ -819,7 +857,7 @@ class CourseAutoTester:
                         continue
 
                 except (PlaywrightTimeoutError, PlaywrightError) as exc:
-                    print(f"扫描章节目录失败 selector={selector}: {exc}")
+                    print(f"扫描章节目录失败 selector={selector}: {redact_urls_in_text(exc)}")
                     continue
 
         if saw_visible_item and not saw_unfinished_candidate:
@@ -848,7 +886,7 @@ class CourseAutoTester:
             print(f"{description} 未打开新窗口，继续使用当前页面。")
             return clicked
         except PlaywrightError as exc:
-            print(f"处理新窗口失败 [{description}]: {exc}")
+            print(f"处理新窗口失败 [{description}]: {redact_urls_in_text(exc)}")
             return False
 
     def login(self) -> bool:
@@ -858,7 +896,7 @@ class CourseAutoTester:
             self.page.goto(self.config["login_url"], wait_until="domcontentloaded")
             print("已打开登录页")
         except PlaywrightError as exc:
-            print(f"打开登录页失败: {exc}")
+            print(f"打开登录页失败: {redact_urls_in_text(exc)}")
             return False
 
         filled_username = self.safe_fill(
@@ -881,7 +919,7 @@ class CourseAutoTester:
         return True
 
     def open_course(self) -> bool:
-        keyword = self.config["course_keyword"]
+        keyword = str(self.config.get("course_keyword") or "").strip()
         if not self.page:
             return False
 
@@ -893,9 +931,13 @@ class CourseAutoTester:
                 self.wait_for_page_settle("课程页")
                 return True
             except PlaywrightError as exc:
-                print(f"通过课程 URL 打开课程失败: {exc}")
+                print(f"通过课程 URL 打开课程失败: {redact_urls_in_text(exc)}")
                 self.save_debug_screenshot("open_course_url_failed")
                 return False
+
+        if not keyword:
+            print("配置缺失: 请设置 CX_COURSE_KEYWORD / --course 或 CX_COURSE_URL / --course-url。")
+            return False
 
         keyword_terms = self.course_keyword_terms(keyword)
         deadline = time.monotonic() + self.config["lookup_timeout_ms"] / 1000
@@ -917,7 +959,8 @@ class CourseAutoTester:
                 current_url = self.page.url
             print(
                 f"未找到元素 [课程卡片: {keyword}]（模糊匹配），"
-                f"状态={match_status}，尝试关键词={keyword_terms}，url={current_url}"
+                f"状态={match_status}，尝试关键词={keyword_terms}，"
+                f"url={redact_url_for_log(current_url)}"
             )
             self.save_debug_screenshot("open_course_failed")
             return False
@@ -939,7 +982,7 @@ class CourseAutoTester:
                 print("课程链接点击后仍停留在课程列表，改用课程链接直接打开。")
                 self.page.goto(course_href, wait_until="domcontentloaded", timeout=self.config["timeout_ms"])
             except PlaywrightError as exc:
-                print(f"直接打开课程链接失败: {exc}")
+                print(f"直接打开课程链接失败: {redact_urls_in_text(exc)}")
                 return False
         self.wait_for_page_settle("课程页")
         return True
@@ -977,7 +1020,7 @@ class CourseAutoTester:
         return self.wait_for_learning_content()
 
     def handle_commitment_if_present(self) -> bool:
-        if not self.config.get("auto_commitment", True):
+        if not self.config.get("auto_commitment", False):
             return True
 
         modal = self.find_locator_in_page_or_frames(
@@ -1215,7 +1258,7 @@ class CourseAutoTester:
                 self.page.wait_for_timeout(wait_ms)
             return self.wait_for_learning_content()
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"切换学习资源卡失败 [{description}]: {exc}")
+            print(f"切换学习资源卡失败 [{description}]: {redact_urls_in_text(exc)}")
             return False
 
     def current_video_locator(self, video: Optional[Locator], video_index: Optional[int]) -> Optional[Locator]:
@@ -1514,7 +1557,7 @@ class CourseAutoTester:
                 return False
             return self.recover_video_playback(target, "初始播放", video_index)
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"设置视频倍速失败: {exc}")
+            print(f"设置视频倍速失败: {redact_urls_in_text(exc)}")
             return False
 
     def playback_speed_restricted(self) -> bool:
@@ -1571,7 +1614,7 @@ class CourseAutoTester:
                     print(f"已点击视频播放控件: {selector}")
                     return True
                 except (PlaywrightTimeoutError, PlaywrightError) as exc:
-                    print(f"点击视频播放控件失败 [{selector}]: {exc}")
+                    print(f"点击视频播放控件失败 [{selector}]: {redact_urls_in_text(exc)}")
 
         if self.page:
             try:
@@ -1604,7 +1647,7 @@ class CourseAutoTester:
                 for candidate in candidates:
                     print(f"视频候选控件: {candidate}")
             except PlaywrightError as exc:
-                print(f"提取视频候选控件失败: {exc}")
+                print(f"提取视频候选控件失败: {redact_urls_in_text(exc)}")
 
         try:
             current_video.scroll_into_view_if_needed(timeout=2_000)
@@ -1616,7 +1659,7 @@ class CourseAutoTester:
                         print(f"已向视频发送键盘按键: {key}")
                         time.sleep(0.2)
                     except PlaywrightError as exc:
-                        print(f"发送视频键盘按键失败 [{key}]: {exc}")
+                        print(f"发送视频键盘按键失败 [{key}]: {redact_urls_in_text(exc)}")
             box = current_video.bounding_box()
             if box:
                 click_positions = [
@@ -1628,13 +1671,13 @@ class CourseAutoTester:
                         print(f"已点击 video 元素尝试播放，位置={position}")
                         return True
                     except (PlaywrightTimeoutError, PlaywrightError) as exc:
-                        print(f"点击 video 元素尝试播放失败 [{position}]: {exc}")
+                        print(f"点击 video 元素尝试播放失败 [{position}]: {redact_urls_in_text(exc)}")
             else:
                 current_video.click(timeout=2_000, force=True)
                 print("已点击 video 元素尝试播放。")
             return True
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"点击 video 元素失败: {exc}")
+            print(f"点击 video 元素失败: {redact_urls_in_text(exc)}")
             return False
 
     def recover_video_playback(
@@ -1787,7 +1830,7 @@ class CourseAutoTester:
             print(f"已触发视频播放恢复，目标倍速: {playback_rate}，触发原因: {reason}")
             return True
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"恢复视频播放失败 [{reason}]: {exc}")
+            print(f"恢复视频播放失败 [{reason}]: {redact_urls_in_text(exc)}")
             return False
 
     def read_video_state(self, video: Optional[Locator], video_index: Optional[int] = None) -> Optional[Dict[str, Any]]:
@@ -1823,7 +1866,7 @@ class CourseAutoTester:
             except (PlaywrightTimeoutError, PlaywrightError) as exc:
                 if not self.page_is_available("读取视频进度"):
                     return None
-                print(f"读取视频进度失败，尝试重新定位 video: {exc}")
+                print(f"读取视频进度失败，尝试重新定位 video: {redact_urls_in_text(exc)}")
                 continue
         return None
 
@@ -2014,13 +2057,13 @@ class CourseAutoTester:
                     self.page.go_back(wait_until="domcontentloaded", timeout=self.config["timeout_ms"])
                     print(f"已点开并返回: {description}")
                 except (PlaywrightTimeoutError, PlaywrightError) as exc:
-                    print(f"课件返回失败 [{description}]: {exc}")
+                    print(f"课件返回失败 [{description}]: {redact_urls_in_text(exc)}")
                     return False
             else:
                 print(f"已点开课件入口并继续: {description}")
             return True
         except PlaywrightError as exc:
-            print(f"课件快速处理失败 [{description}]: {exc}")
+            print(f"课件快速处理失败 [{description}]: {redact_urls_in_text(exc)}")
             return False
 
     def click_next_chapter(self) -> str:
@@ -2099,7 +2142,10 @@ class CourseAutoTester:
                 next_control.click(timeout=5_000)
                 print("已点击: 超星下一节控件")
             except (PlaywrightTimeoutError, PlaywrightError) as click_exc:
-                print(f"常规点击超星下一节失败，尝试执行 onclick: {click_exc}")
+                print(
+                    "常规点击超星下一节失败，尝试执行 onclick: "
+                    f"{redact_urls_in_text(click_exc)}"
+                )
                 next_control.evaluate(
                     """element => {
                         const handler = element.getAttribute('onclick');
@@ -2112,7 +2158,7 @@ class CourseAutoTester:
                 print("已执行: 超星下一节 onclick")
             return "advanced" if self.wait_for_next_transition(before_url, before_signature) else "failed"
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"超星下一节控件不可用: {exc}")
+            print(f"超星下一节控件不可用: {redact_urls_in_text(exc)}")
             return "failed"
 
     def is_next_control_usable(self, next_control: Locator) -> bool:
@@ -2139,7 +2185,7 @@ class CourseAutoTester:
                 return False
             return True
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"读取下一节控件状态失败: {exc}")
+            print(f"读取下一节控件状态失败: {redact_urls_in_text(exc)}")
             return False
 
     def learning_page_signature(self) -> str:
@@ -2165,7 +2211,7 @@ class CourseAutoTester:
         deadline = time.monotonic() + self.config["next_navigation_timeout_ms"] / 1000
         while time.monotonic() < deadline:
             if self.page.url != before_url:
-                print(f"已进入下一节页面: {self.page.url}")
+                print(f"已进入下一节页面: {redact_url_for_log(self.page.url)}")
                 return True
             current_signature = self.learning_page_signature()
             if current_signature and current_signature != before_signature:
@@ -2227,7 +2273,7 @@ class CourseAutoTester:
             print("收到中断信号，准备退出。")
             return False
         except Exception as exc:
-            print(f"自动化流程出现未预期异常: {exc}")
+            print(f"自动化流程出现未预期异常: {redact_urls_in_text(exc)}")
             self.save_debug_screenshot("unexpected_error")
             return False
         finally:

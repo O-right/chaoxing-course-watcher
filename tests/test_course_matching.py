@@ -1,5 +1,7 @@
 import copy
+import io
 import unittest
+from contextlib import redirect_stdout
 
 from main import CONFIG, CourseAutoTester
 
@@ -92,6 +94,20 @@ class CourseMatchingTests(unittest.TestCase):
         self.assertEqual(best["text"], "中国近现代史纲要")
         self.assertEqual(best["match_reason"], "similarity")
         self.assertGreaterEqual(best["score"], 0.8)
+
+    def test_missing_course_keyword_and_url_fails_fast(self):
+        tester = self.make_tester()
+        tester.config["course_keyword"] = ""
+        tester.config["course_url"] = ""
+        tester.page = object()
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = tester.open_course()
+
+        self.assertFalse(result)
+        self.assertIn("CX_COURSE_KEYWORD", output.getvalue())
+        self.assertIn("CX_COURSE_URL", output.getvalue())
 
 
 if __name__ == "__main__":
