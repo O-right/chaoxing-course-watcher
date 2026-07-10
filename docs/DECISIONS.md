@@ -17,3 +17,23 @@ Reason: The course watcher requires private account and course configuration for
 Decision: Continue requiring real video end states, checked no-next completion paths, and bounded live evidence before claiming course completion.
 
 Reason: Previous Chaoxing runs showed false-completion risks from no-next pages, early near-end advancement, true no-source videos, and mixed courseware/video resource cards.
+
+## 2026-06-27: Course Selection Uses Scored Candidates
+
+Decision: Course-name lookup should collect visible course candidates, score normalized title/text variants, and reject close ambiguous matches instead of clicking the first partial text match. `CX_COURSE_URL` / `--course-url` is the exact-entry fallback when keyword matching is uncertain.
+
+Reason: Short keywords such as a subject name can match multiple course cards. Failing with candidate diagnostics is safer than opening the wrong course, while direct URLs preserve a deterministic path for authorized known courses.
+
+## 2026-07-10: Public Release Uses Privacy-Safe Explicit Defaults
+
+Decision: Public builds require explicit course configuration, redact URL paths and query data from logs, default playback to `1.0`, keep automatic commitment confirmation disabled, pin verified dependencies, and require license plus Git-history privacy review before changing repository visibility to public.
+
+Reason: A reusable public repository should not target a specific course, disclose private course identifiers in diagnostics, silently accept learning commitments, or publish without clear reuse terms and an explicit decision about historical personal metadata.
+
+Release choice: Use the MIT License with `Copyright (c) 2026 O-right`. The owner accepts the existing non-noreply author email and named course evidence in Git history, so the repository will not rewrite existing commits before publication.
+
+## 2026-07-10: Use A Chinese Public Display Name And Stable Repository Slug
+
+Decision: Present the project as `学习通自动刷课脚本` in the README heading and GitHub repository description, while retaining the existing `chaoxing-course-watcher` repository slug.
+
+Reason: The Chinese display name states the project's purpose directly. Keeping the existing slug avoids breaking clone commands, links, and the already-open pull request immediately before publication.

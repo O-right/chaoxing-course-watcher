@@ -5,8 +5,10 @@ import os
 import random
 import re
 import time
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from playwright.sync_api import Error as PlaywrightError
@@ -15,6 +17,9 @@ from playwright.sync_api import sync_playwright
 
 
 load_dotenv()
+
+
+LOG_URL_PATTERN = re.compile(r"(?:https?|wss?)://[^\s<>'\"]+")
 
 
 def env_flag(name: str, default: str = "false") -> bool:
@@ -35,6 +40,31 @@ def env_float(name: str, default: float) -> float:
         return default
 
 
+def redact_url_for_log(url: str) -> str:
+    value = str(url or "").strip()
+    if not value:
+        return "<empty-url>"
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return "<redacted-url>"
+    if parsed.scheme.lower() not in {"http", "https", "ws", "wss"} or not parsed.hostname:
+        return "<redacted-url>"
+    hostname = parsed.hostname
+    if ":" in hostname and not hostname.startswith("["):
+        hostname = f"[{hostname}]"
+    try:
+        port = parsed.port
+    except ValueError:
+        return "<redacted-url>"
+    authority = f"{hostname}:{port}" if port is not None else hostname
+    return f"{parsed.scheme.lower()}://{authority}/<redacted>"
+
+
+def redact_urls_in_text(value: Any) -> str:
+    return LOG_URL_PATTERN.sub(lambda match: redact_url_for_log(match.group(0)), str(value))
+
+
 CONFIG: Dict[str, Any] = {
     # 账号和密码从本地 .env 或环境变量读取，避免把真实凭据写入代码。
     "login_url": os.getenv(
@@ -43,9 +73,10 @@ CONFIG: Dict[str, Any] = {
     ),
     "username": os.getenv("CX_USERNAME", ""),
     "password": os.getenv("CX_PASSWORD", ""),
-    "course_keyword": os.getenv("CX_COURSE_KEYWORD", "“四史”专题课"),
+    "course_keyword": os.getenv("CX_COURSE_KEYWORD", ""),
+    "course_url": os.getenv("CX_COURSE_URL", ""),
     "chapter_keyword": os.getenv("CX_CHAPTER_KEYWORD", ""),
-    "playback_rate": env_float("CX_PLAYBACK_RATE", 2.0),
+    "playback_rate": env_float("CX_PLAYBACK_RATE", 1.0),
     "browser_channel": os.getenv("CX_BROWSER_CHANNEL", ""),
     "browser_executable_path": os.getenv("CX_BROWSER_EXECUTABLE_PATH", ""),
     "headless": env_flag("CX_HEADLESS"),
@@ -64,7 +95,7 @@ CONFIG: Dict[str, Any] = {
     "max_video_wait_seconds": env_int("CX_MAX_VIDEO_WAIT_SECONDS", 6 * 60 * 60),
     "max_chapters": env_int("CX_MAX_CHAPTERS", 100),
     "stop_when_no_next": env_flag("CX_STOP_WHEN_NO_NEXT", "true"),
-    "auto_commitment": env_flag("CX_AUTO_COMMITMENT", "true"),
+    "auto_commitment": env_flag("CX_AUTO_COMMITMENT", "false"),
     "commitment_timeout_ms": env_int("CX_COMMITMENT_TIMEOUT_MS", 10_000),
     "next_navigation_timeout_ms": env_int("CX_NEXT_NAVIGATION_TIMEOUT_MS", 10_000),
     "courseware_hold_seconds": env_float("CX_COURSEWARE_HOLD_SECONDS", 1.0),
@@ -77,6 +108,8 @@ CONFIG: Dict[str, Any] = {
     "manual_verification_wait_seconds": env_float("CX_MANUAL_VERIFICATION_WAIT_SECONDS", 0.0),
     "verification_poll_seconds": env_float("CX_VERIFICATION_POLL_SECONDS", 2.0),
     "max_video_recovery_attempts": env_int("CX_MAX_VIDEO_RECOVERY_ATTEMPTS", 18),
+    "course_match_min_score": env_float("CX_COURSE_MATCH_MIN_SCORE", 0.72),
+    "course_match_ambiguous_delta": env_float("CX_COURSE_MATCH_AMBIGUOUS_DELTA", 0.06),
     "screenshot_dir": os.getenv("CX_SCREENSHOT_DIR", "logs/screenshots"),
     "selectors": {
         "username_input": "#phone",
@@ -135,6 +168,7 @@ class CourseAutoTester:
         self.context = None
         self.visited_urls: set[str] = set()
         self.course_already_completed = False
+        self.page_unavailable_reported = False
 
     @property
     def selectors(self) -> Dict[str, str]:
@@ -172,12 +206,42 @@ class CourseAutoTester:
                 try:
                     resource.close()
                 except PlaywrightError as exc:
-                    print(f"关闭资源时出现异常: {exc}")
+                    print(f"关闭资源时出现异常: {redact_urls_in_text(exc)}")
         if hasattr(self, "playwright"):
             self.playwright.stop()
 
+    def page_is_available(self, description: str = "") -> bool:
+        if not self.page:
+            return False
+        try:
+            if not self.page.is_closed():
+                return True
+        except PlaywrightError as exc:
+            if not self.page_unavailable_reported:
+                print(
+                    f"{description or '页面操作'} 无法继续: 无法读取浏览器页面状态: "
+                    f"{redact_urls_in_text(exc)}"
+                )
+                self.page_unavailable_reported = True
+            return False
+
+        if not self.page_unavailable_reported:
+            current_url = ""
+            try:
+                current_url = self.page.url
+            except PlaywrightError:
+                current_url = "<无法读取 URL>"
+            print(
+                f"{description or '页面操作'} 无法继续: 浏览器页面已关闭，"
+                f"url={redact_url_for_log(current_url)}"
+            )
+            self.page_unavailable_reported = True
+        return False
+
     def save_debug_screenshot(self, label: str) -> None:
         if not self.page:
+            return
+        if not self.page_is_available(f"保存调试截图 [{label}]"):
             return
 
         try:
@@ -189,13 +253,16 @@ class CourseAutoTester:
             self.page.screenshot(path=str(path), full_page=True)
             print(f"已保存调试截图: {path}")
         except (OSError, PlaywrightError) as exc:
-            print(f"保存调试截图失败 [{label}]: {exc}")
+            print(f"保存调试截图失败 [{label}]: {redact_urls_in_text(exc)}")
 
     def locator(self, selector: str, **values: str) -> Locator:
         if not self.page:
             raise RuntimeError("浏览器页面尚未初始化")
         resolved = selector.format(**values)
         return self.page.locator(resolved).first
+
+    def selector_parts(self, selector: str) -> list[str]:
+        return [part.strip() for part in selector.split(",") if part.strip()]
 
     def course_keyword_terms(self, keyword: str) -> list[str]:
         terms: list[str] = []
@@ -205,21 +272,133 @@ class CourseAutoTester:
             if term and term not in terms:
                 terms.append(term)
 
+        keyword = keyword.strip()
         add(keyword)
         add(keyword.replace("“", '"').replace("”", '"'))
         add(keyword.replace("“", "").replace("”", "").replace('"', ""))
 
         for quoted in re.findall(r"[“\"]([^”\"]+)[”\"]", keyword):
             add(quoted)
-        for suffix in ("专题课", "课程", "课"):
-            if keyword.endswith(suffix):
-                add(keyword[: -len(suffix)])
+        for term in list(terms):
+            for suffix in ("专题课", "课程", "课"):
+                if term.endswith(suffix):
+                    add(term[: -len(suffix)])
         return terms
 
-    def find_course_link(self, keyword_terms: list[str]) -> tuple[Optional[Locator], str, str]:
-        if not self.page:
-            return None, "", ""
+    def normalize_course_text(self, text: str) -> str:
+        text = (text or "").lower()
+        text = (
+            text.replace("“", '"')
+            .replace("”", '"')
+            .replace("‘", "'")
+            .replace("’", "'")
+        )
+        text = re.sub(r"\s+", "", text)
+        return re.sub(r"[\"'《》<>【】\[\]（）(){}：:，,。.;；、\-_\\/|]+", "", text)
 
+    def course_candidate_search_text(self, candidate: Dict[str, Any]) -> str:
+        parts = [
+            str(candidate.get("text") or ""),
+            str(candidate.get("title") or ""),
+            str(candidate.get("container_text") or ""),
+        ]
+        return " ".join(part for part in parts if part).strip()
+
+    def course_match_score(self, keyword_terms: list[str], candidate_text: str) -> tuple[float, str, str]:
+        candidate_norm = self.normalize_course_text(candidate_text)
+        if not candidate_norm:
+            return 0.0, "", "empty"
+
+        best_score = 0.0
+        best_term = ""
+        best_reason = "no_match"
+
+        for term in keyword_terms:
+            term_norm = self.normalize_course_text(term)
+            if not term_norm:
+                continue
+
+            if candidate_norm == term_norm:
+                return 1.0, term, "exact"
+
+            score = 0.0
+            reason = "no_match"
+            if term_norm in candidate_norm:
+                length_ratio = len(term_norm) / max(len(candidate_norm), 1)
+                base = 0.78 if len(term_norm) <= 3 else 0.84
+                score = min(0.98, base + 0.14 * length_ratio)
+                reason = "contains"
+            elif len(candidate_norm) >= 2 and candidate_norm in term_norm:
+                length_ratio = len(candidate_norm) / max(len(term_norm), 1)
+                score = min(0.86, 0.72 + 0.10 * length_ratio)
+                reason = "candidate_in_keyword"
+            else:
+                ratio = SequenceMatcher(None, term_norm, candidate_norm).ratio()
+                if ratio >= 0.68:
+                    score = min(0.82, ratio)
+                    reason = "similarity"
+
+            if score > best_score:
+                best_score = score
+                best_term = term
+                best_reason = reason
+
+        return best_score, best_term, best_reason
+
+    def select_best_course_candidate(
+        self,
+        keyword_terms: list[str],
+        candidates: list[Dict[str, Any]],
+    ) -> tuple[Optional[Dict[str, Any]], list[Dict[str, Any]], str]:
+        min_score = float(self.config.get("course_match_min_score", 0.72))
+        ambiguous_delta = max(0.0, float(self.config.get("course_match_ambiguous_delta", 0.06)))
+        ranked: list[Dict[str, Any]] = []
+
+        for candidate in candidates:
+            candidate_texts = [
+                str(candidate.get("text") or ""),
+                str(candidate.get("title") or ""),
+                str(candidate.get("container_text") or ""),
+                self.course_candidate_search_text(candidate),
+            ]
+            score = 0.0
+            matched_term = ""
+            reason = "no_match"
+            for candidate_text in candidate_texts:
+                candidate_score, candidate_term, candidate_reason = self.course_match_score(keyword_terms, candidate_text)
+                if candidate_score > score:
+                    score = candidate_score
+                    matched_term = candidate_term
+                    reason = candidate_reason
+            if score < min_score:
+                continue
+            enriched = dict(candidate)
+            enriched["score"] = score
+            enriched["matched_term"] = matched_term
+            enriched["match_reason"] = reason
+            enriched["display_text"] = (
+                str(candidate.get("text") or candidate.get("title") or candidate.get("container_text") or "")
+                .replace("\n", " ")
+                .strip()
+            )
+            ranked.append(enriched)
+
+        ranked.sort(
+            key=lambda item: (
+                -float(item.get("score") or 0.0),
+                len(self.normalize_course_text(self.course_candidate_search_text(item))),
+            )
+        )
+        if not ranked:
+            return None, [], "no_match"
+        if len(ranked) > 1 and float(ranked[0]["score"]) - float(ranked[1]["score"]) < ambiguous_delta:
+            return None, ranked, "ambiguous"
+        return ranked[0], ranked, "matched"
+
+    def css_text_value(self, value: str) -> str:
+        return value.replace("\\", "\\\\").replace('"', '\\"')
+
+    def course_candidate_selectors(self, keyword_terms: list[str]) -> list[tuple[str, str]]:
         link_selectors = [
             ".course-info a.color1",
             ".course-info a",
@@ -228,40 +407,139 @@ class CourseAutoTester:
             "a.color1",
             "a[target='_blank']",
         ]
-        containers = [self.page] + self.page.frames
-        for container in containers:
-            for term in keyword_terms:
-                for selector in link_selectors:
-                    candidate = container.locator(selector).filter(has_text=term).first
+        selectors: list[tuple[str, str]] = []
+        seen: set[str] = set()
+
+        def add(selector: str, source: str) -> None:
+            if selector and selector not in seen:
+                seen.add(selector)
+                selectors.append((selector, source))
+
+        for selector in self.selector_parts(self.selectors.get("course_card", "")):
+            if "{course_keyword}" in selector:
+                for term in keyword_terms:
                     try:
-                        candidate.wait_for(state="visible", timeout=1_000)
-                        return candidate, term, selector
-                    except (PlaywrightTimeoutError, PlaywrightError):
+                        add(selector.format(course_keyword=self.css_text_value(term)), "configured course_card")
+                    except KeyError:
                         continue
+            else:
+                add(selector, "configured course_card")
+
+        for selector in link_selectors:
+            add(selector, "course link")
+
+        return selectors
+
+    def course_candidate_details(self, candidate: Locator) -> Optional[Dict[str, Any]]:
+        try:
+            return candidate.evaluate(
+                """element => {
+                    const visible = el => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        const box = el.getBoundingClientRect();
+                        return style.display !== 'none'
+                            && style.visibility !== 'hidden'
+                            && box.width > 0
+                            && box.height > 0;
+                    };
+                    const textOf = el => ((el && (el.innerText || el.textContent)) || '')
+                        .replace(/\\s+/g, ' ')
+                        .trim();
+                    const link = element.tagName === 'A' ? element : element.closest('a');
+                    const root = element.closest(
+                        '.course-info, .course, .course_name, li, .item, [class*="course"]'
+                    ) || link || element;
+                    if (!visible(element) && !visible(link) && !visible(root)) {
+                        return null;
+                    }
+                    return {
+                        text: textOf(element).slice(0, 180),
+                        title: (element.getAttribute('title') || (link && link.getAttribute('title')) || '').trim(),
+                        container_text: textOf(root).slice(0, 240),
+                        href: link ? (link.href || link.getAttribute('href') || '') : '',
+                        tag: element.tagName
+                    };
+                }"""
+            )
+        except (PlaywrightTimeoutError, PlaywrightError):
+            return None
+
+    def collect_course_candidates(self, keyword_terms: list[str]) -> list[Dict[str, Any]]:
+        if not self.page_is_available("查找课程候选"):
+            return []
+
+        candidates: list[Dict[str, Any]] = []
+        seen: set[str] = set()
+        containers = [self.page] + self.page.frames
+
+        def add_candidate(locator: Locator, source: str) -> None:
+            details = self.course_candidate_details(locator)
+            if not details:
+                return
+            display_text = self.course_candidate_search_text(details)
+            if not display_text:
+                return
+            if source == "text fallback" and len(display_text) > 140:
+                return
+            key = f"{self.normalize_course_text(display_text)}|{details.get('href') or ''}"
+            if key in seen:
+                return
+            seen.add(key)
+            record = dict(details)
+            record["locator"] = locator
+            record["source"] = source
+            candidates.append(record)
+
+        for container in containers:
+            for selector, source in self.course_candidate_selectors(keyword_terms):
+                try:
+                    locator = container.locator(selector)
+                    count = min(locator.count(), 80)
+                except PlaywrightError:
+                    continue
+                for index in range(count):
+                    add_candidate(locator.nth(index), source)
 
         # Last resort for non-Chaoxing layouts: avoid huge page containers that only
         # match because they contain the course list.
         for container in containers:
             for term in keyword_terms:
-                candidates = container.get_by_text(term, exact=False)
                 try:
-                    count = min(candidates.count(), 10)
+                    text_matches = container.get_by_text(term, exact=False)
+                    count = min(text_matches.count(), 10)
                 except PlaywrightError:
                     continue
                 for index in range(count):
-                    candidate = candidates.nth(index)
-                    try:
-                        candidate.wait_for(state="visible", timeout=500)
-                        text_length = candidate.evaluate(
-                            "el => ((el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim()).length"
-                        )
-                        if text_length > 120:
-                            continue
-                        return candidate, term, "text fallback"
-                    except (PlaywrightTimeoutError, PlaywrightError):
-                        continue
+                    add_candidate(text_matches.nth(index), "text fallback")
 
-        return None, "", ""
+        return candidates
+
+    def find_course_link(self, keyword_terms: list[str]) -> tuple[Optional[Locator], str, str, str, str]:
+        candidates = self.collect_course_candidates(keyword_terms)
+        best, ranked, status = self.select_best_course_candidate(keyword_terms, candidates)
+
+        if best:
+            source = (
+                f"{best.get('source')} score={float(best.get('score') or 0.0):.3f} "
+                f"reason={best.get('match_reason')} text={best.get('display_text')}"
+            )
+            return best.get("locator"), str(best.get("matched_term") or ""), source, str(best.get("href") or ""), status
+
+        if status == "ambiguous":
+            print("课程关键词匹配到多个接近候选，停止自动选择。请使用更完整课程名或课程 URL。")
+            for candidate in ranked[:5]:
+                print(
+                    "候选课程: "
+                    f"score={float(candidate.get('score') or 0.0):.3f}, "
+                    f"term={candidate.get('matched_term')}, "
+                    f"source={candidate.get('source')}, "
+                    f"text={candidate.get('display_text')}, "
+                    f"href={redact_url_for_log(str(candidate.get('href') or ''))}"
+                )
+            return None, "", "ambiguous", "", status
+
+        return None, "", "", "", status
 
     def find_locator_in_page_or_frames(
         self,
@@ -272,7 +550,7 @@ class CourseAutoTester:
         log_missing: bool = True,
         **values: str,
     ) -> Optional[Locator]:
-        if not self.page:
+        if not self.page_is_available(f"查找元素 [{description}]"):
             return None
 
         resolved = selector.format(**values)
@@ -280,6 +558,8 @@ class CourseAutoTester:
         last_frame_count = 0
 
         while time.monotonic() < deadline:
+            if not self.page_is_available(f"查找元素 [{description}]"):
+                return None
             candidates = [self.page.locator(resolved).first]
             frames = self.page.frames
             last_frame_count = len(frames)
@@ -303,7 +583,7 @@ class CourseAutoTester:
                 current_title = "<无法读取标题>"
             print(
                 f"未找到元素 [{description}]，selector={resolved}，"
-                f"title={current_title}，url={current_url}，frames={last_frame_count}"
+                f"title={current_title}，url={redact_url_for_log(current_url)}，frames={last_frame_count}"
             )
         return None
 
@@ -322,7 +602,7 @@ class CourseAutoTester:
             print(f"已输入: {description}")
             return True
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"输入失败 [{description}]: {exc}")
+            print(f"输入失败 [{description}]: {redact_urls_in_text(exc)}")
             return False
 
     def safe_click(self, target: Locator, description: str) -> bool:
@@ -333,7 +613,7 @@ class CourseAutoTester:
             print(f"已点击: {description}")
             return True
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"点击失败 [{description}]: {exc}")
+            print(f"点击失败 [{description}]: {redact_urls_in_text(exc)}")
             return False
 
     def safe_click_selector(self, selector: str, description: str, **values: str) -> bool:
@@ -399,7 +679,10 @@ class CourseAutoTester:
             time.sleep(0.5)
 
         current_url = self.page.url if self.page else ""
-        print(f"滚动查找后仍未找到 [{description}: {text}]，url={current_url}")
+        print(
+            f"滚动查找后仍未找到 [{description}: {text}]，"
+            f"url={redact_url_for_log(current_url)}"
+        )
         return None
 
     def chapter_catalog_selectors(self) -> list[str]:
@@ -574,7 +857,7 @@ class CourseAutoTester:
                         continue
 
                 except (PlaywrightTimeoutError, PlaywrightError) as exc:
-                    print(f"扫描章节目录失败 selector={selector}: {exc}")
+                    print(f"扫描章节目录失败 selector={selector}: {redact_urls_in_text(exc)}")
                     continue
 
         if saw_visible_item and not saw_unfinished_candidate:
@@ -594,6 +877,7 @@ class CourseAutoTester:
             if not clicked:
                 return False
             self.page = popup_info.value
+            self.page_unavailable_reported = False
             self.page.set_default_timeout(self.config["timeout_ms"])
             self.page.wait_for_load_state("domcontentloaded")
             print(f"已切换到新页面: {self.page.title()}")
@@ -602,7 +886,7 @@ class CourseAutoTester:
             print(f"{description} 未打开新窗口，继续使用当前页面。")
             return clicked
         except PlaywrightError as exc:
-            print(f"处理新窗口失败 [{description}]: {exc}")
+            print(f"处理新窗口失败 [{description}]: {redact_urls_in_text(exc)}")
             return False
 
     def login(self) -> bool:
@@ -612,7 +896,7 @@ class CourseAutoTester:
             self.page.goto(self.config["login_url"], wait_until="domcontentloaded")
             print("已打开登录页")
         except PlaywrightError as exc:
-            print(f"打开登录页失败: {exc}")
+            print(f"打开登录页失败: {redact_urls_in_text(exc)}")
             return False
 
         filled_username = self.safe_fill(
@@ -635,8 +919,24 @@ class CourseAutoTester:
         return True
 
     def open_course(self) -> bool:
-        keyword = self.config["course_keyword"]
+        keyword = str(self.config.get("course_keyword") or "").strip()
         if not self.page:
+            return False
+
+        course_url = str(self.config.get("course_url") or "").strip()
+        if course_url:
+            try:
+                self.page.goto(course_url, wait_until="domcontentloaded", timeout=self.config["timeout_ms"])
+                print("已通过配置的课程 URL 打开课程入口。")
+                self.wait_for_page_settle("课程页")
+                return True
+            except PlaywrightError as exc:
+                print(f"通过课程 URL 打开课程失败: {redact_urls_in_text(exc)}")
+                self.save_debug_screenshot("open_course_url_failed")
+                return False
+
+        if not keyword:
+            print("配置缺失: 请设置 CX_COURSE_KEYWORD / --course 或 CX_COURSE_URL / --course-url。")
             return False
 
         keyword_terms = self.course_keyword_terms(keyword)
@@ -644,17 +944,23 @@ class CourseAutoTester:
         course: Optional[Locator] = None
         matched_term = keyword
         matched_source = ""
+        course_href = ""
+        match_status = "not_found"
 
         while time.monotonic() < deadline:
-            course, matched_term, matched_source = self.find_course_link(keyword_terms)
-            if course:
+            course, matched_term, matched_source, course_href, match_status = self.find_course_link(keyword_terms)
+            if course or match_status == "ambiguous":
                 break
             time.sleep(0.5)
 
         if not course:
+            current_url = ""
+            if self.page_is_available("课程查找失败信息"):
+                current_url = self.page.url
             print(
                 f"未找到元素 [课程卡片: {keyword}]（模糊匹配），"
-                f"尝试关键词={keyword_terms}，url={self.page.url}"
+                f"状态={match_status}，尝试关键词={keyword_terms}，"
+                f"url={redact_url_for_log(current_url)}"
             )
             self.save_debug_screenshot("open_course_failed")
             return False
@@ -664,11 +970,11 @@ class CourseAutoTester:
         if matched_source:
             print(f"课程入口匹配来源: {matched_source}")
         before_url = self.page.url
-        course_href = ""
-        try:
-            course_href = course.get_attribute("href") or ""
-        except PlaywrightError:
-            course_href = ""
+        if not course_href:
+            try:
+                course_href = course.get_attribute("href") or ""
+            except PlaywrightError:
+                course_href = ""
         if not self.safe_click_with_optional_popup(course, f"课程卡片: {keyword}"):
             return False
         if self.page and self.page.url == before_url and course_href:
@@ -676,7 +982,7 @@ class CourseAutoTester:
                 print("课程链接点击后仍停留在课程列表，改用课程链接直接打开。")
                 self.page.goto(course_href, wait_until="domcontentloaded", timeout=self.config["timeout_ms"])
             except PlaywrightError as exc:
-                print(f"直接打开课程链接失败: {exc}")
+                print(f"直接打开课程链接失败: {redact_urls_in_text(exc)}")
                 return False
         self.wait_for_page_settle("课程页")
         return True
@@ -714,7 +1020,7 @@ class CourseAutoTester:
         return self.wait_for_learning_content()
 
     def handle_commitment_if_present(self) -> bool:
-        if not self.config.get("auto_commitment", True):
+        if not self.config.get("auto_commitment", False):
             return True
 
         modal = self.find_locator_in_page_or_frames(
@@ -773,7 +1079,7 @@ class CourseAutoTester:
         return False
 
     def blocking_verification_signal(self) -> Optional[str]:
-        if not self.page:
+        if not self.page_is_available("检测平台验证"):
             return None
 
         containers = [self.page] + [frame for frame in self.page.frames if frame != self.page.main_frame]
@@ -820,6 +1126,9 @@ class CourseAutoTester:
         return None
 
     def handle_blocking_verification(self, description: str) -> bool:
+        if not self.page_is_available(f"{description} 页面状态检查"):
+            return False
+
         signal = self.blocking_verification_signal()
         if not signal:
             return True
@@ -860,7 +1169,7 @@ class CourseAutoTester:
         )
 
     def video_locators(self) -> list[Locator]:
-        if not self.page:
+        if not self.page_is_available("查找 video 元素"):
             return []
 
         videos: list[Locator] = []
@@ -883,8 +1192,12 @@ class CourseAutoTester:
         return videos
 
     def wait_for_video_locators(self) -> list[Locator]:
+        if not self.page_is_available("等待 video 元素"):
+            return []
         deadline = time.monotonic() + max(0.0, float(self.config.get("video_initial_wait_seconds", 0.0)))
         while True:
+            if not self.page_is_available("等待 video 元素"):
+                return []
             videos = self.video_locators()
             if videos:
                 return videos
@@ -945,10 +1258,12 @@ class CourseAutoTester:
                 self.page.wait_for_timeout(wait_ms)
             return self.wait_for_learning_content()
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"切换学习资源卡失败 [{description}]: {exc}")
+            print(f"切换学习资源卡失败 [{description}]: {redact_urls_in_text(exc)}")
             return False
 
     def current_video_locator(self, video: Optional[Locator], video_index: Optional[int]) -> Optional[Locator]:
+        if not self.page_is_available("重新定位 video"):
+            return None
         if video_index is not None:
             videos = self.video_locators()
             if video_index < len(videos):
@@ -1242,7 +1557,7 @@ class CourseAutoTester:
                 return False
             return self.recover_video_playback(target, "初始播放", video_index)
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"设置视频倍速失败: {exc}")
+            print(f"设置视频倍速失败: {redact_urls_in_text(exc)}")
             return False
 
     def playback_speed_restricted(self) -> bool:
@@ -1299,7 +1614,7 @@ class CourseAutoTester:
                     print(f"已点击视频播放控件: {selector}")
                     return True
                 except (PlaywrightTimeoutError, PlaywrightError) as exc:
-                    print(f"点击视频播放控件失败 [{selector}]: {exc}")
+                    print(f"点击视频播放控件失败 [{selector}]: {redact_urls_in_text(exc)}")
 
         if self.page:
             try:
@@ -1332,7 +1647,7 @@ class CourseAutoTester:
                 for candidate in candidates:
                     print(f"视频候选控件: {candidate}")
             except PlaywrightError as exc:
-                print(f"提取视频候选控件失败: {exc}")
+                print(f"提取视频候选控件失败: {redact_urls_in_text(exc)}")
 
         try:
             current_video.scroll_into_view_if_needed(timeout=2_000)
@@ -1344,7 +1659,7 @@ class CourseAutoTester:
                         print(f"已向视频发送键盘按键: {key}")
                         time.sleep(0.2)
                     except PlaywrightError as exc:
-                        print(f"发送视频键盘按键失败 [{key}]: {exc}")
+                        print(f"发送视频键盘按键失败 [{key}]: {redact_urls_in_text(exc)}")
             box = current_video.bounding_box()
             if box:
                 click_positions = [
@@ -1356,13 +1671,13 @@ class CourseAutoTester:
                         print(f"已点击 video 元素尝试播放，位置={position}")
                         return True
                     except (PlaywrightTimeoutError, PlaywrightError) as exc:
-                        print(f"点击 video 元素尝试播放失败 [{position}]: {exc}")
+                        print(f"点击 video 元素尝试播放失败 [{position}]: {redact_urls_in_text(exc)}")
             else:
                 current_video.click(timeout=2_000, force=True)
                 print("已点击 video 元素尝试播放。")
             return True
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"点击 video 元素失败: {exc}")
+            print(f"点击 video 元素失败: {redact_urls_in_text(exc)}")
             return False
 
     def recover_video_playback(
@@ -1515,10 +1830,13 @@ class CourseAutoTester:
             print(f"已触发视频播放恢复，目标倍速: {playback_rate}，触发原因: {reason}")
             return True
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"恢复视频播放失败 [{reason}]: {exc}")
+            print(f"恢复视频播放失败 [{reason}]: {redact_urls_in_text(exc)}")
             return False
 
     def read_video_state(self, video: Optional[Locator], video_index: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        if not self.page_is_available("读取视频进度"):
+            return None
+
         candidates: list[Locator] = []
         if video:
             candidates.append(video)
@@ -1546,7 +1864,9 @@ class CourseAutoTester:
                     })"""
                 )
             except (PlaywrightTimeoutError, PlaywrightError) as exc:
-                print(f"读取视频进度失败，尝试重新定位 video: {exc}")
+                if not self.page_is_available("读取视频进度"):
+                    return None
+                print(f"读取视频进度失败，尝试重新定位 video: {redact_urls_in_text(exc)}")
                 continue
         return None
 
@@ -1567,6 +1887,8 @@ class CourseAutoTester:
 
             target = self.current_video_locator(video, video_index)
             if not target:
+                if self.page_is_available("视频播放"):
+                    print("未能重新定位当前 video 元素，停止当前任务点。")
                 return False
             state = self.read_video_state(target, video_index)
             if not state:
@@ -1641,6 +1963,8 @@ class CourseAutoTester:
 
     def process_current_learning_card(self) -> bool:
         videos = self.wait_for_video_locators()
+        if not self.page_is_available("处理学习资源卡"):
+            return False
         if not self.handle_blocking_verification("视频检测"):
             return False
         if videos:
@@ -1733,13 +2057,13 @@ class CourseAutoTester:
                     self.page.go_back(wait_until="domcontentloaded", timeout=self.config["timeout_ms"])
                     print(f"已点开并返回: {description}")
                 except (PlaywrightTimeoutError, PlaywrightError) as exc:
-                    print(f"课件返回失败 [{description}]: {exc}")
+                    print(f"课件返回失败 [{description}]: {redact_urls_in_text(exc)}")
                     return False
             else:
                 print(f"已点开课件入口并继续: {description}")
             return True
         except PlaywrightError as exc:
-            print(f"课件快速处理失败 [{description}]: {exc}")
+            print(f"课件快速处理失败 [{description}]: {redact_urls_in_text(exc)}")
             return False
 
     def click_next_chapter(self) -> str:
@@ -1818,7 +2142,10 @@ class CourseAutoTester:
                 next_control.click(timeout=5_000)
                 print("已点击: 超星下一节控件")
             except (PlaywrightTimeoutError, PlaywrightError) as click_exc:
-                print(f"常规点击超星下一节失败，尝试执行 onclick: {click_exc}")
+                print(
+                    "常规点击超星下一节失败，尝试执行 onclick: "
+                    f"{redact_urls_in_text(click_exc)}"
+                )
                 next_control.evaluate(
                     """element => {
                         const handler = element.getAttribute('onclick');
@@ -1831,7 +2158,7 @@ class CourseAutoTester:
                 print("已执行: 超星下一节 onclick")
             return "advanced" if self.wait_for_next_transition(before_url, before_signature) else "failed"
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"超星下一节控件不可用: {exc}")
+            print(f"超星下一节控件不可用: {redact_urls_in_text(exc)}")
             return "failed"
 
     def is_next_control_usable(self, next_control: Locator) -> bool:
@@ -1858,7 +2185,7 @@ class CourseAutoTester:
                 return False
             return True
         except (PlaywrightTimeoutError, PlaywrightError) as exc:
-            print(f"读取下一节控件状态失败: {exc}")
+            print(f"读取下一节控件状态失败: {redact_urls_in_text(exc)}")
             return False
 
     def learning_page_signature(self) -> str:
@@ -1884,7 +2211,7 @@ class CourseAutoTester:
         deadline = time.monotonic() + self.config["next_navigation_timeout_ms"] / 1000
         while time.monotonic() < deadline:
             if self.page.url != before_url:
-                print(f"已进入下一节页面: {self.page.url}")
+                print(f"已进入下一节页面: {redact_url_for_log(self.page.url)}")
                 return True
             current_signature = self.learning_page_signature()
             if current_signature and current_signature != before_signature:
@@ -1946,7 +2273,7 @@ class CourseAutoTester:
             print("收到中断信号，准备退出。")
             return False
         except Exception as exc:
-            print(f"自动化流程出现未预期异常: {exc}")
+            print(f"自动化流程出现未预期异常: {redact_urls_in_text(exc)}")
             self.save_debug_screenshot("unexpected_error")
             return False
         finally:
@@ -1956,6 +2283,7 @@ class CourseAutoTester:
 def build_config_from_args(base_config: Dict[str, Any]) -> Dict[str, Any]:
     parser = argparse.ArgumentParser(description="Chaoxing course watcher")
     parser.add_argument("--course", help="要自动观看的课程关键词，会覆盖 CX_COURSE_KEYWORD")
+    parser.add_argument("--course-url", help="直接打开指定课程 URL，会覆盖 CX_COURSE_URL 并跳过课程关键词匹配")
     parser.add_argument("--chapter", help="起始章节关键词，会覆盖 CX_CHAPTER_KEYWORD")
     parser.add_argument("--max-chapters", type=int, help="最多连续处理的章节数，会覆盖 CX_MAX_CHAPTERS")
     parser.add_argument("--headless", action="store_true", help="使用无头浏览器运行")
@@ -1976,6 +2304,8 @@ def build_config_from_args(base_config: Dict[str, Any]) -> Dict[str, Any]:
     config["selectors"] = dict(base_config["selectors"])
     if args.course:
         config["course_keyword"] = args.course
+    if args.course_url:
+        config["course_url"] = args.course_url
     if args.chapter:
         config["chapter_keyword"] = args.chapter
     if args.max_chapters is not None:
