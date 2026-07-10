@@ -10,7 +10,7 @@
 ## Validation
 
 - [x] Verify repository tracks `git@github.com:O-right/chaoxing-course-watcher.git`.
-- [x] Verify local branch tracks `origin/main`.
+- [x] Verify the local feature branch tracks `origin/codex/course-matching-guards`.
 - [x] Run `python -m py_compile main.py`.
 - [x] Run `python main.py --help` after doc sync.
 - [x] Add regression coverage for closed-page video progress and screenshot guards.
@@ -22,6 +22,10 @@
 - [x] Run `python -m py_compile main.py tests\test_closed_page_guards.py tests\test_course_matching.py` after the course-matching change.
 - [x] Run `python main.py --help` after adding `--course-url`.
 - [x] Run bounded live course-opening smoke for `中国现代史纲要` matching `中国近现代史纲要` without entering chapters or watching videos.
+- [x] Integrate latest `origin/main` open-source hardening into the feature branch and resolve the README conflict.
+- [x] Preserve `--course-url` documentation and add `CX_COURSE_URL` to the safe environment template.
+- [x] Re-run 9 unit tests, Python compilation, CLI help, ignore/template checks, and staged diff checks after integration.
+- [ ] Review and merge PR #1 after GitHub confirms the synchronized branch is conflict-free.
 - [ ] Run a bounded live course smoke only when credentials and authorization are available.
 
 ## Future Work
