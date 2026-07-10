@@ -22,7 +22,8 @@ The `codex/course-matching-guards` branch now combines course-matching and close
 - `python main.py --help` and `.\run_chaoxing.ps1 --help` passed and show `--course-url`.
 - Pinned dependencies resolved locally and `python -m pip check` passed.
 - README structure, CI permissions, full-SHA Action pins, Dependabot configuration, secret-pattern checks, ignore checks, and `git diff --check` passed.
-- A custom scan of all 10 Git commits found no sensitive-path files, high-confidence credentials, course-ID URL parameters, or mobile-number patterns.
+- A custom scan of all 12 Git commits found no sensitive-path files, high-confidence credentials, course-ID URL parameters, or mobile-number patterns.
+- GitHub Actions run `29083118433` passed Python 3.10 and 3.11 dependency installation, 14 tests, compilation, and Chinese CLI help on Windows.
 - A bounded authorized course-opening smoke previously verified similarity matching without entering chapters or processing videos.
 
 ## Next Steps
@@ -30,7 +31,7 @@ The `codex/course-matching-guards` branch now combines course-matching and close
 - Select and add an open-source license.
 - Decide whether to accept or rewrite the existing author-email and named-course metadata in Git history.
 - Run dedicated `gitleaks` and `pip-audit` checks; the temporary `pip-audit` attempt timed out.
-- Push the open-source preparation changes, confirm GitHub Actions, and review PR #1 before merging to `main`.
+- Review the clean, mergeable Draft PR #1 before merging to `main`.
 - Re-run the target course in a bounded live session to confirm the closed-page guard behavior in the real Chaoxing flow.
 - Use headed mode with manual verification wait if the platform presents a visible verification or the browser closes during a headless run.
 - Keep local `.env` outside Git and do not print or commit private course URLs.
@@ -41,11 +42,10 @@ The `codex/course-matching-guards` branch now combines course-matching and close
 - No `LICENSE` exists yet, so the repository is not ready to become public.
 - Git history contains a non-noreply author email and named course evidence; history rewriting requires an explicit owner decision.
 - Dedicated secret scanning is not installed, and the temporary dependency vulnerability audit timed out.
-- The new GitHub Actions workflow has not run remotely yet.
 - Do not claim new live completion without a fresh configured run.
 - The reported closed-page failure has local guard coverage, but the exact live Chaoxing course path has not been re-run after the fix.
 - The course-matching optimization has deterministic unit coverage and one bounded live course-opening smoke, but not full course-flow validation.
-- PR #1 has no recorded CI checks, so local deterministic validation is currently the primary merge evidence.
+- PR #1 is clean and mergeable, and its Python 3.10/3.11 GitHub Actions checks pass; it remains a Draft.
 - The removed tutai deployment is not a viable current runner until its Chaoxing network block is resolved.
 
 ## Active Files

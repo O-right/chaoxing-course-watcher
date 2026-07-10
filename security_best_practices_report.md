@@ -4,7 +4,7 @@
 
 ## 执行摘要
 
-本次体检覆盖 Python + Playwright 主程序、PowerShell 启动脚本、公开文档、GitHub 配置、当前工作树和全部 10 个 Git 提交。
+本次体检覆盖 Python + Playwright 主程序、PowerShell 启动脚本、公开文档、GitHub 配置、当前工作树和全部 12 个 Git 提交。
 
 没有发现已提交的 `.env`、日志、截图、私钥、课程 ID URL 参数、手机号或高置信凭据模式；当前 `.env` 也处于未跟踪且被忽略状态。体检期间发现的完整 URL 日志泄露风险、带特定课程的默认配置、自动确认学习承诺的默认行为、未锁定依赖和缺少 CI 等问题已经在当前分支修复。
 
@@ -89,12 +89,12 @@ GitHub 社区健康度当前为 28%，缺少贡献指南、行为准则、Issue 
 - 当前跟踪文件中没有超过 1 MiB 的文件。
 - `python -m pip check` 通过。
 - README 代码围栏成对，主要发布章节齐全。
+- GitHub Actions run [29083118433](https://github.com/O-right/chaoxing-course-watcher/actions/runs/29083118433) 在 Windows 上通过 Python 3.10 和 3.11 的依赖安装、14 项测试、编译和中文 CLI 帮助检查。
 
 ## 未运行或无法验证
 
 - 专用 Git 历史秘密扫描：工具未安装。
 - `pip-audit` 漏洞数据库审计：临时执行超时。
-- GitHub Actions：工作流尚未推送，因此还没有远端运行结果。
 - 真实学习通 / 超星完整课程流程：本次开源体检未运行，也不能由离线测试替代。
 
 ## 公开前清单
@@ -103,7 +103,7 @@ GitHub 社区健康度当前为 28%，缺少贡献指南、行为准则、Issue 
 - [ ] 决定是否接受公开现有作者邮箱和历史课程信息；如不接受，先重写历史。
 - [ ] 使用 gitleaks 或同类工具完成一次专用历史秘密扫描。
 - [ ] 成功运行 `pip-audit -r requirements.txt` 或同等级依赖漏洞扫描。
-- [ ] 推送当前分支并确认 GitHub Actions 通过。
+- [x] 推送当前分支并确认 GitHub Actions 通过。
 - [ ] 审查并合并 Draft PR #1。
 - [ ] 再次确认仓库中没有 `.env`、日志、截图、cookie、token 或浏览器会话。
 - [ ] 最后才把 GitHub 仓库可见性改为 Public。

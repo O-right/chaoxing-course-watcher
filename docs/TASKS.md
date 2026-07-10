@@ -41,7 +41,7 @@
 - [ ] Select and add `LICENSE`.
 - [ ] Decide whether existing author-email and course metadata in Git history is acceptable.
 - [ ] Run dedicated gitleaks and dependency vulnerability scans.
-- [ ] Push the branch and confirm GitHub Actions passes.
+- [x] Push the branch and confirm Python 3.10/3.11 GitHub Actions passes.
 - [ ] Review and merge PR #1 before changing repository visibility.
 
 ## Future Work
