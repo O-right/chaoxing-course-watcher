@@ -202,6 +202,7 @@ git diff --check
 ├── main.py                       # 主程序入口
 ├── run_chaoxing.ps1              # PowerShell 启动脚本
 ├── requirements.txt              # Python 依赖
+├── LICENSE                       # MIT 开源许可证
 ├── .env.example                  # 不含真实凭据的配置模板
 ├── .gitignore                    # 隐私、运行产物和缓存忽略规则
 ├── .github/                      # CI 与 Dependabot 配置
@@ -223,7 +224,7 @@ git diff --check
 
 ## 许可证
 
-仓库目前尚未添加开源许可证。正式公开前应选择并添加 `LICENSE`；没有许可证时，公开代码默认不代表他人获得复制、修改或分发权限。
+本项目采用 [MIT License](LICENSE) 开源。你可以使用、复制、修改和分发代码，但需要保留原始版权与许可证声明；软件按“原样”提供，不附带任何担保。
 
 ## 支持项目
 

@@ -38,10 +38,12 @@
 - [x] Scan the current tree and all Git commits with custom sensitive-path and credential rules.
 - [x] Add `security_best_practices_report.md`.
 - [x] Run 14 unit tests, compilation, direct/launcher CLI help, dependency, README, CI, ignore, secret-pattern, and diff checks.
-- [ ] Select and add `LICENSE`.
-- [ ] Decide whether existing author-email and course metadata in Git history is acceptable.
-- [ ] Run dedicated gitleaks and dependency vulnerability scans.
+- [x] Add standard MIT `LICENSE` for `O-right`.
+- [x] Confirm existing author-email and course metadata in Git history is acceptable; do not rewrite history.
+- [x] Verify official gitleaks checksum and pass Git-history plus working-directory scans.
+- [x] Run pip-audit, upgrade vulnerable `python-dotenv` from `1.2.1` to `1.2.2`, and confirm zero known vulnerabilities.
 - [x] Push the branch and confirm Python 3.10/3.11 GitHub Actions passes.
+- [ ] Owner reviews the final Chinese README.
 - [ ] Review and merge PR #1 before changing repository visibility.
 
 ## Future Work

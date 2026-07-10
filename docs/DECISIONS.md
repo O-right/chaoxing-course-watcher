@@ -29,3 +29,5 @@ Reason: Short keywords such as a subject name can match multiple course cards. F
 Decision: Public builds require explicit course configuration, redact URL paths and query data from logs, default playback to `1.0`, keep automatic commitment confirmation disabled, pin verified dependencies, and require license plus Git-history privacy review before changing repository visibility to public.
 
 Reason: A reusable public repository should not target a specific course, disclose private course identifiers in diagnostics, silently accept learning commitments, or publish without clear reuse terms and an explicit decision about historical personal metadata.
+
+Release choice: Use the MIT License with `Copyright (c) 2026 O-right`. The owner accepts the existing non-noreply author email and named course evidence in Git history, so the repository will not rewrite existing commits before publication.

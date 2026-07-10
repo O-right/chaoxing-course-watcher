@@ -4,112 +4,110 @@
 
 ## 执行摘要
 
-本次体检覆盖 Python + Playwright 主程序、PowerShell 启动脚本、公开文档、GitHub 配置、当前工作树和全部 12 个 Git 提交。
+本次体检覆盖 Python + Playwright 主程序、PowerShell 启动脚本、公开文档、GitHub 配置、当前工作树和完整 Git 历史。
 
-没有发现已提交的 `.env`、日志、截图、私钥、课程 ID URL 参数、手机号或高置信凭据模式；当前 `.env` 也处于未跟踪且被忽略状态。体检期间发现的完整 URL 日志泄露风险、带特定课程的默认配置、自动确认学习承诺的默认行为、未锁定依赖和缺少 CI 等问题已经在当前分支修复。
+MIT 许可证已经添加；仓库所有者明确接受现有提交历史中的个人邮箱和课程验证信息，不进行历史重写。gitleaks 对 Git 历史和当前目录的专用扫描均未发现秘密。pip-audit 首次发现 `python-dotenv==1.2.1` 存在 Medium 漏洞 `CVE-2026-28684`，升级到首个修复版本 `1.2.2` 后复扫为 0 个已知漏洞。
 
-当前结论是：**尚不建议立即把仓库改为 Public**。公开前仍需完成许可证选择，并确认是否接受现有 Git 历史中的作者邮箱与课程测试/验证信息；专用秘密扫描和依赖漏洞数据库审计也仍缺少最终证据。
+当前没有未处理的高危或中危自动化体检发现。仓库仍为 Private，下一步由所有者审核 README、审查并合并 Draft PR，最后再手动改为 Public。
 
-本项目使用 Python 3.11、Playwright 同步 API 和 PowerShell 启动脚本。已安装的安全审查技能没有专门适用于“Python + Playwright 本地浏览器自动化”的框架参考，因此代码部分依据通用凭据管理、日志最小化、安全默认值和供应链原则审查。
+本项目使用 Python、Playwright 同步 API 和 PowerShell。已安装的安全审查技能没有专门适用于“Python + Playwright 本地浏览器自动化”的框架参考，因此代码部分依据通用凭据管理、日志最小化、安全默认值和供应链原则审查。
 
-## 审查范围与证据
+## 审查范围
 
-- 检查当前 Git 工作树、跟踪文件、忽略规则和大文件。
-- 扫描全部 10 个 Git 提交中的敏感路径和高置信凭据特征。
-- 扫描历史中的课程 ID URL 参数、手机号模式和作者邮箱元数据。
-- 核对 GitHub 仓库可见性、默认分支、Draft PR、社区健康文件和 CI 状态。
-- 检查依赖声明、已安装版本和 `pip check`。
+- 检查 Git 工作树、跟踪文件、忽略规则、许可证和大文件。
+- 使用自定义规则扫描完整 Git 历史中的敏感路径、高置信凭据、课程 ID URL 参数和手机号模式。
+- 使用 gitleaks 扫描 Git 历史和当前工作目录。
+- 使用 pip-audit 检查固定 Python 依赖及其传递依赖。
 - 检查 URL、异常、课程候选和页面跳转的终端输出路径。
-- 运行确定性单元测试、语法检查、CLI 帮助和差异检查。
+- 核对 GitHub 仓库可见性、Draft PR、CI、Dependabot 和社区健康文件。
+- 运行单元测试、语法检查、CLI 帮助、依赖检查和差异检查。
 
-## 发现
+## 当前发现
 
-### 高：OSR-001 缺少开源许可证
+### 严重 / 高 / 中
 
-仓库没有 `LICENSE` 或 `COPYING` 文件，[README.md](README.md#L224) 也明确记录许可证尚未选择。
+无未处理发现。
 
-影响：仓库即使设为 Public，也只是公开可见；默认情况下，其他人并未获得复制、修改和分发代码的许可，因此不算完整可复用的开源发布。
+### 低：OSR-001 社区健康文件仍不完整
 
-建议：公开前由仓库所有者选择许可证。希望简单、宽松传播时通常选择 MIT；希望保留明确专利授权时可考虑 Apache-2.0；希望衍生作品继续开源时可考虑 GPL。许可证选择涉及权利与分发意图，本次没有代替所有者决定。
+GitHub 社区健康度为 28%，缺少贡献指南、行为准则、Issue 模板和 PR 模板。这些文件不阻止小型个人项目公开，但会降低外部贡献的可预期性。
 
-### 中：PRIV-001 Git 历史包含需要确认的个人元数据
+建议：只有在项目开始接收较多外部贡献时，再补充 `CONTRIBUTING.md`、`CODE_OF_CONDUCT.md` 和最小 Issue/PR 模板。
 
-提交历史使用了一个非 GitHub noreply 的个人邮箱；历史状态文档和测试中也出现过具名课程验证数据。当前树可以清理，但普通提交无法从旧提交中删除这些信息。
+## 已接受的隐私选择
 
-影响：仓库变为 Public 后，Git 提交元数据和旧版本文件都可被公众读取。它们不是账号密码，但可能暴露个人邮箱或学习经历。
+### PRIV-001 保留现有 Git 历史
 
-建议：公开前明确选择“接受公开”或“重写历史”。如果不接受，应先切换到 GitHub noreply 邮箱，并使用 `git filter-repo` 等工具清理历史，然后重新审查并强制更新远端。历史重写具有破坏性，本次未执行。
-
-### 中：SEC-001 专用秘密与依赖漏洞扫描证据不足
-
-`gitleaks`、`trufflehog`、`pip-audit`、`bandit` 和 `ruff` 均未预装。自定义历史扫描没有发现高置信秘密，但不能完全替代经过维护的秘密检测规则。一次性 `pip-audit` 临时环境在 124 秒后超时，临时目录已清理，因此没有可用的漏洞数据库结论。
-
-影响：低概率的非典型凭据或已知依赖漏洞仍可能未被当前检查覆盖。
-
-建议：公开前至少再运行一次 `gitleaks git --redact` 和 `pip-audit -r requirements.txt`。公开后启用 GitHub Secret Scanning，并保留 Dependabot。
-
-### 低：OSR-002 社区健康文件仍不完整
-
-GitHub 社区健康度当前为 28%，缺少贡献指南、行为准则、Issue 模板和 PR 模板。这些文件不阻止小型项目公开，但会降低外部贡献的可预期性。
-
-建议：根据项目是否接受外部贡献，后续补充 `CONTRIBUTING.md`、`CODE_OF_CONDUCT.md` 和最小 Issue/PR 模板。
+旧提交使用非 GitHub noreply 的个人邮箱，历史状态文档和测试也包含具名课程验证数据。仓库所有者已明确接受这些信息公开，不执行会改变提交 SHA 的历史重写。新的开源准备提交继续使用 GitHub noreply 邮箱。
 
 ## 已修复问题
+
+### LICENSE-FIX-001 添加 MIT 许可证
+
+- 添加标准 [MIT LICENSE](LICENSE)，版权标识为 `Copyright (c) 2026 O-right`。
+- [README.md](README.md#许可证) 已说明使用、修改和分发条件以及无担保条款。
 
 ### SEC-FIX-001 终端日志中的私有 URL
 
 - 新增统一 URL 脱敏函数：[main.py](main.py#L43) 和 [main.py](main.py#L64)。
-- 页面关闭、元素查找、课程候选、导航异常和下一任务点日志不再输出 URL 路径、查询参数或片段。
-- 新增确定性回归测试，验证课程 ID 和班级 ID 不会进入输出。
+- 页面关闭、元素查找、课程候选、导航异常和下一任务点日志不再输出 URL userinfo、路径、查询参数或片段。
+- 回归测试覆盖 HTTP(S)、WebSocket、嵌入式 userinfo、课程 ID 和班级 ID。
 
 ### SAFE-FIX-001 公开仓库默认配置
 
 - 课程关键词默认值改为空，必须通过本地配置或命令行明确指定：[main.py](main.py#L76)。
 - 未提供课程关键词和课程 URL 时快速失败并给出配置提示：[main.py](main.py#L939)。
 - 默认播放倍速改为 `1.0`：[main.py](main.py#L79)。
-- 自动确认学习承诺默认关闭：[main.py](main.py#L98)；只有本人阅读并同意后才应主动开启。
+- 自动确认学习承诺默认关闭：[main.py](main.py#L98)。
 
-### SUPPLY-FIX-001 依赖与自动检查
+### SUPPLY-FIX-001 修复已知依赖漏洞
 
-- 已将本机验证过的依赖版本固定在 [requirements.txt](requirements.txt)。
-- 新增 Windows 上的 Python 3.10 / 3.11 GitHub Actions 测试：[ci.yml](.github/workflows/ci.yml)。
-- GitHub Actions 使用完整提交 SHA 固定官方 Action。
-- 新增 pip 与 GitHub Actions 的每周 Dependabot 检查：[dependabot.yml](.github/dependabot.yml)。
+- pip-audit 首次发现 `python-dotenv==1.2.1` 命中 [CVE-2026-28684 / GHSA-mf9w-mj56-hr94](https://github.com/advisories/GHSA-mf9w-mj56-hr94)。
+- 漏洞等级为 Medium，影响是 `set_key` 在跨设备重命名回退时可能跟随符号链接并覆盖任意文件。
+- [requirements.txt](requirements.txt) 已升级到首个修复版本 `python-dotenv==1.2.2`。
+- pip-audit `2.10.1` 复扫 5 个直接和传递依赖，结果为 0 个已知漏洞。
+
+### SUPPLY-FIX-002 依赖与自动检查
+
+- 固定本机和 CI 验证过的 Python 依赖版本。
+- [ci.yml](.github/workflows/ci.yml) 在 Windows 上检查 Python 3.10 / 3.11，使用只读权限和完整 SHA 固定官方 Action。
+- [dependabot.yml](.github/dependabot.yml) 每周检查 pip 与 GitHub Actions 更新。
 
 ### DOC-FIX-001 中文使用文档
 
-[README.md](README.md) 已改为完整中文说明，包含项目目的、授权边界、快速开始、配置、运行方式、参数、故障排查、验证、隐私安全、许可证状态和 Star 引导。
+[README.md](README.md) 已提供完整中文说明，包括项目目的、授权边界、快速开始、配置、运行方式、参数、故障排查、验证、隐私安全、MIT 许可证和 Star 引导。
 
 ## 已通过检查
 
 - 当前 `.env` 未被 Git 跟踪，并由 `.gitignore` 明确忽略。
-- 全部历史中未发现敏感路径文件。
-- 非文档历史中未发现高置信凭据模式。
-- 历史中未发现课程 ID URL 参数或中国大陆手机号模式。
+- 自定义完整历史扫描未发现敏感路径文件、高置信凭据、课程 ID URL 参数或手机号模式。
+- gitleaks `8.30.1` Windows x64 官方 ZIP SHA256 校验通过：`d29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e`。
+- `gitleaks git --redact=100` 扫描 12 个提交，结果为 `no leaks found`。
+- `gitleaks dir --redact=100` 扫描当前工作目录，结果为 `no leaks found`。
+- pip-audit `2.10.1` 在依赖升级后报告 0 个已知漏洞。
 - 当前跟踪文件中没有超过 1 MiB 的文件。
 - `python -m pip check` 通过。
+- 本地 14 项测试、Python 编译、直接 CLI 和 PowerShell 启动器帮助检查通过。
+- GitHub Actions run [29083267002](https://github.com/O-right/chaoxing-course-watcher/actions/runs/29083267002) 在 Python 3.10 和 3.11 上通过。
 - README 代码围栏成对，主要发布章节齐全。
-- GitHub Actions run [29083118433](https://github.com/O-right/chaoxing-course-watcher/actions/runs/29083118433) 在 Windows 上通过 Python 3.10 和 3.11 的依赖安装、14 项测试、编译和中文 CLI 帮助检查。
 
-## 未运行或无法验证
+## 未运行
 
-- 专用 Git 历史秘密扫描：工具未安装。
-- `pip-audit` 漏洞数据库审计：临时执行超时。
-- 真实学习通 / 超星完整课程流程：本次开源体检未运行，也不能由离线测试替代。
+- 真实学习通 / 超星完整课程流程：本次开源体检没有运行，也不能由离线测试替代。
 
 ## 公开前清单
 
-- [ ] 选择并添加 `LICENSE`。
-- [ ] 决定是否接受公开现有作者邮箱和历史课程信息；如不接受，先重写历史。
-- [ ] 使用 gitleaks 或同类工具完成一次专用历史秘密扫描。
-- [ ] 成功运行 `pip-audit -r requirements.txt` 或同等级依赖漏洞扫描。
-- [x] 推送当前分支并确认 GitHub Actions 通过。
+- [x] 添加 MIT `LICENSE`。
+- [x] 确认接受公开现有作者邮箱和历史课程信息。
+- [x] 使用 gitleaks 完成 Git 历史和当前目录扫描。
+- [x] 使用 pip-audit 完成依赖漏洞扫描并修复发现。
+- [x] 推送开源准备分支并确认 GitHub Actions 通过。
+- [ ] 所有者审核最终 README。
 - [ ] 审查并合并 Draft PR #1。
-- [ ] 再次确认仓库中没有 `.env`、日志、截图、cookie、token 或浏览器会话。
-- [ ] 最后才把 GitHub 仓库可见性改为 Public。
+- [ ] 最后把 GitHub 仓库可见性改为 Public。
 
 ## 发布判断
 
-**暂不具备立即公开条件。**
+**自动化开源体检通过，等待所有者审核 README。**
 
-代码与文档层面的主要可自动修复问题已经处理；剩余阻断项集中在许可证、历史隐私选择和专用扫描证据。完成公开前清单后，再进行一次最终复核即可发布。
+许可证、历史隐私选择、秘密扫描、依赖漏洞扫描、本地验证和 CI 均已有明确结果。仓库仍保持 Private；所有者确认 README 后，再审查合并 PR 并手动公开。
