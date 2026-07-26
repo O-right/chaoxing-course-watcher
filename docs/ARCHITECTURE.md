@@ -49,7 +49,8 @@ This repository is a single-workflow Python + Playwright project for Chaoxing co
 
 - Baseline: `python -m py_compile main.py`.
 - CLI smoke: `python main.py --help`.
-- Unit suite: `python -m unittest discover -s tests`.
+- Unit suite: `python -m unittest discover -s tests -t .`.
+- Lint (undefined names / redefinitions only): `pipx run ruff check --select F821,F811,E9 main.py tests`.
 - PowerShell forwarding smoke: `.\run_chaoxing.ps1 --help`.
 - Use local/offline Playwright fixtures for selector and recovery changes when practical.
 - Use bounded live Chaoxing runs only when authorized and configured.

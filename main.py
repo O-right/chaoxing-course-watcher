@@ -27,16 +27,21 @@ def env_flag(name: str, default: str = "false") -> bool:
 
 
 def env_int(name: str, default: int) -> int:
+    raw = os.getenv(name, str(default))
     try:
-        return int(os.getenv(name, str(default)))
+        return int(raw)
     except ValueError:
+        # 静默回退会让 CX_MAX_CHAPTERS=1OO（字母 O）这种错字变成默认值且毫无提示。
+        print(f"配置警告: {name}={raw!r} 不是合法整数，已回退为默认值 {default}。")
         return default
 
 
 def env_float(name: str, default: float) -> float:
+    raw = os.getenv(name, str(default))
     try:
-        return float(os.getenv(name, str(default)))
+        return float(raw)
     except ValueError:
+        print(f"配置警告: {name}={raw!r} 不是合法数值，已回退为默认值 {default}。")
         return default
 
 
@@ -65,6 +70,65 @@ def redact_urls_in_text(value: Any) -> str:
     return LOG_URL_PATTERN.sub(lambda match: redact_url_for_log(match.group(0)), str(value))
 
 
+def video_is_complete(state: Dict[str, Any], completion_margin: float) -> bool:
+    """判断视频是否真的播放完成。纯函数，便于直接单测。
+
+    注意语义：`ended` 之外，还把"距结尾不足 completion_margin 且已暂停"算作完成。
+    这意味着在结尾附近被平台弹题、缓冲卡住或人工暂停，也会被判成完成。
+    """
+    duration = float(state.get("duration") or 0.0)
+    current = float(state.get("currentTime") or 0.0)
+    if bool(state.get("ended")):
+        return True
+    near_end = duration > 0 and current >= duration - max(0.05, min(1.0, completion_margin))
+    return near_end and bool(state.get("paused"))
+
+
+def stall_epsilon_for(sleep_seconds: float, playback_rate: float, configured_epsilon: float) -> float:
+    """一轮里视频"至少要前进多少"才不算停滞。纯函数，便于直接单测。
+
+    配置项 progress_stall_epsilon_seconds 是绝对秒数，但一轮实际期望前进量是
+    sleep × 倍速。当 poll × rate <= epsilon 时（例如 --progress-poll-seconds 0.5
+    配 1.0 倍速，恰好每轮前进 0.5 == epsilon），健康视频每轮都会被判成停滞，
+    每 3 轮触发一次恢复，18 次恢复配额迅速耗尽并让整个任务点失败。
+    倍速被平台压到 0.5x 时更早触发（poll <= 1.0 秒就会中招）。
+    这里让阈值随轮询密度和倍速一起缩放。
+    """
+    expected = max(0.0, sleep_seconds) * max(playback_rate, 0.1)
+    return max(0.01, min(max(0.0, configured_epsilon), expected * 0.5))
+
+
+def next_poll_seconds(
+    state: Dict[str, Any],
+    poll_seconds: float,
+    min_poll_seconds: float,
+    completion_margin: float,
+) -> float:
+    """临近结尾时缩短轮询间隔，避免为最后几秒多睡一整个周期。纯函数，便于直接单测。"""
+    duration = float(state.get("duration") or 0.0)
+    current = float(state.get("currentTime") or 0.0)
+    rate = float(state.get("playbackRate") or 0.0)
+    if duration <= 0 or rate <= 0:
+        return poll_seconds
+    remaining_media = max(0.0, duration - current - completion_margin)
+    estimated_wall = remaining_media / max(rate, 0.1) + 0.2
+    return min(poll_seconds, max(min_poll_seconds, estimated_wall))
+
+
+def classify_completion_scan(signals: Optional[list[str]]) -> str:
+    """把“未完成标记”扫描结果翻译成导航判定。纯函数，便于直接单测。
+
+    - unreadable: 页面/frame 一个都没读成功。读不到不等于已完成，必须 fail-closed。
+    - incomplete: 明确读到了未完成标记。
+    - clear: 读到了，且没有未完成标记。
+    """
+    if signals is None:
+        return "unreadable"
+    if signals:
+        return "incomplete"
+    return "clear"
+
+
 CONFIG: Dict[str, Any] = {
     # 账号和密码从本地 .env 或环境变量读取，避免把真实凭据写入代码。
     "login_url": os.getenv(
@@ -83,6 +147,9 @@ CONFIG: Dict[str, Any] = {
     "slow_mo_ms": env_int("CX_SLOW_MO_MS", 100),
     "timeout_ms": env_int("CX_TIMEOUT_MS", 15_000),
     "lookup_timeout_ms": env_int("CX_LOOKUP_TIMEOUT_MS", 30_000),
+    "locator_probe_min_ms": env_int("CX_LOCATOR_PROBE_MIN_MS", 150),
+    "play_control_probe_ms": env_int("CX_PLAY_CONTROL_PROBE_MS", 1_000),
+    "settle_timeout_ms": env_int("CX_SETTLE_TIMEOUT_MS", 3_000),
     "delay_range_seconds": (
         env_float("CX_MIN_ACTION_DELAY_SECONDS", 2.0),
         env_float("CX_MAX_ACTION_DELAY_SECONDS", 5.0),
@@ -94,13 +161,20 @@ CONFIG: Dict[str, Any] = {
     "progress_stall_epsilon_seconds": env_float("CX_PROGRESS_STALL_EPSILON_SECONDS", 0.5),
     "max_video_wait_seconds": env_int("CX_MAX_VIDEO_WAIT_SECONDS", 6 * 60 * 60),
     "max_chapters": env_int("CX_MAX_CHAPTERS", 100),
+    "max_unit_revisits": env_int("CX_MAX_UNIT_REVISITS", 3),
+    # 单个任务点失败后的重试次数。只重试、不跳过：跳过会静默留下没看完的内容。
+    "unit_retries": env_int("CX_UNIT_RETRIES", 2),
     "stop_when_no_next": env_flag("CX_STOP_WHEN_NO_NEXT", "true"),
     "auto_commitment": env_flag("CX_AUTO_COMMITMENT", "false"),
     "commitment_timeout_ms": env_int("CX_COMMITMENT_TIMEOUT_MS", 10_000),
+    "login_check_timeout_ms": env_int("CX_LOGIN_CHECK_TIMEOUT_MS", 8_000),
     "next_navigation_timeout_ms": env_int("CX_NEXT_NAVIGATION_TIMEOUT_MS", 10_000),
+    # 等待点击后弹出新标签页的预算。随机延迟已挪出该窗口，所以这里是纯等待时间。
+    "popup_timeout_ms": env_int("CX_POPUP_TIMEOUT_MS", 5_000),
     "courseware_hold_seconds": env_float("CX_COURSEWARE_HOLD_SECONDS", 1.0),
     "completion_settle_seconds": env_float("CX_COMPLETION_SETTLE_SECONDS", 5.0),
     "video_initial_wait_seconds": env_float("CX_VIDEO_INITIAL_WAIT_SECONDS", 12.0),
+    "video_initial_wait_nonvideo_seconds": env_float("CX_VIDEO_INITIAL_WAIT_NONVIDEO_SECONDS", 2.0),
     "video_source_ready_wait_seconds": env_float("CX_VIDEO_SOURCE_READY_WAIT_SECONDS", 15.0),
     "video_route_switch_wait_seconds": env_float("CX_VIDEO_ROUTE_SWITCH_WAIT_SECONDS", 3.0),
     "video_completion_settle_seconds": env_float("CX_VIDEO_COMPLETION_SETTLE_SECONDS", 2.0),
@@ -108,13 +182,20 @@ CONFIG: Dict[str, Any] = {
     "manual_verification_wait_seconds": env_float("CX_MANUAL_VERIFICATION_WAIT_SECONDS", 0.0),
     "verification_poll_seconds": env_float("CX_VERIFICATION_POLL_SECONDS", 2.0),
     "max_video_recovery_attempts": env_int("CX_MAX_VIDEO_RECOVERY_ATTEMPTS", 18),
+    # 连续多少轮读不到视频时长就放弃该任务点，避免非有限时长的流吃满整个等待预算。
+    "max_unknown_duration_polls": env_int("CX_MAX_UNKNOWN_DURATION_POLLS", 30),
     "course_match_min_score": env_float("CX_COURSE_MATCH_MIN_SCORE", 0.72),
     "course_match_ambiguous_delta": env_float("CX_COURSE_MATCH_AMBIGUOUS_DELTA", 0.06),
     "screenshot_dir": os.getenv("CX_SCREENSHOT_DIR", "logs/screenshots"),
+    # 保存登录会话的路径。留空则不保存（默认）。
+    # 该文件包含登录 cookie，等同于凭据，务必放在仓库外或保持 .gitignore 覆盖。
+    "storage_state_path": os.getenv("CX_STORAGE_STATE_PATH", ""),
     "selectors": {
         "username_input": "#phone",
         "password_input": "#pwd",
         "login_button": "#loginBtn",
+        # 登录成功后才会出现的元素；留空则只用 "是否已离开 passport 页" 判断。
+        "login_success_marker": "",
         # 支持 {course_keyword} 占位符；真实站点建议替换成更稳定的卡片选择器。
         "course_card": ".course-info a:has-text(\"{course_keyword}\"), .course_name:has-text(\"{course_keyword}\"), a.color1:has-text(\"{course_keyword}\"), h3:has-text(\"{course_keyword}\"), span:has-text(\"{course_keyword}\"), a:has-text(\"{course_keyword}\")",
         "chapters_tab": "#nav_7061, li:has-text('章节')",
@@ -129,18 +210,28 @@ CONFIG: Dict[str, Any] = {
             ".chapter_unit .chapter_small_title"
         ),
         "video": "video",
+        # 学习页顶部的资源卡片条（"1课件" / "2视频" / "3作业"）。没有兜底选择器，
+        # 一旦失配就会把多卡片任务点当成单卡片处理，所以必须可配。
+        "learning_card_tabs": "#prev_tab li[onclick], .prev_list li[onclick]",
+        # 超星自带的"下一节"控件，与 next_chapter 的通用文本选择器互为兜底。
+        "next_control": "#prevNextFocusNext",
         "learning_content": "video, iframe, embed, object, .ans-attach-online, .ans-job-icon",
         "learning_overlay_ack": (
             "button:has-text('知道了'), a:has-text('知道了'), "
             "button:has-text('我知道了'), a:has-text('我知道了'), "
             ".layui-layer-btn0:has-text('知道了'), .layui-layer-btn0:has-text('我知道了')"
         ),
+        # 用 ';' 分优先级组，组内用 ',' 一次性交给 CSS 引擎。
+        # 分组是必要的：合并成一条查询时 .first 按 DOM 顺序返回，会让通用文本选择器
+        # 抢在播放器专用按钮前面；但逐条探测又要付 14 次未命中超时，所以折中成 3 组。
         "video_play_control": (
             ".vjs-big-play-button, .vjs-play-control, .vjs-control-bar .vjs-play-control, "
             ".xgplayer-start, .xgplayer-start-layer, "
             ".xgplayer-play, .xgplayer-icon-play, .prism-big-play-btn, "
-            ".prism-play-btn, .mejs__overlay-button, "
-            "button[aria-label*='Play'], button[title*='播放'], "
+            ".prism-play-btn, .mejs__overlay-button"
+            ";"
+            "button[aria-label*='Play'], button[title*='播放']"
+            ";"
             "button:has-text('播放'), a:has-text('播放')"
         ),
         "courseware_open": (
@@ -160,15 +251,25 @@ CONFIG: Dict[str, Any] = {
 }
 
 
+# AGENTS.md 要求选择器必须可通过 .env / 环境变量配置，但上面 12 个选择器原本全是
+# 硬编码字面量、没有任何覆盖入口。这里统一开一个 CX_SELECTOR_<KEY> 逃生口，
+# 未设置时逐字节沿用上面的默认值。超星改版时不用改代码就能救回来。
+CONFIG["selectors"] = {
+    key: os.getenv(f"CX_SELECTOR_{key.upper()}", value)
+    for key, value in CONFIG["selectors"].items()
+}
+
+
 class CourseAutoTester:
     def __init__(self, config: Dict[str, Any]) -> None:
         self.config = config
         self.page: Optional[Page] = None
         self.browser = None
         self.context = None
-        self.visited_urls: set[str] = set()
+        self.unit_visit_counts: Dict[str, int] = {}
         self.course_already_completed = False
         self.page_unavailable_reported = False
+        self.loaded_storage_state = False
 
     @property
     def selectors(self) -> Dict[str, str]:
@@ -193,12 +294,38 @@ class CourseAutoTester:
         elif self.config.get("browser_channel"):
             launch_options["channel"] = self.config["browser_channel"]
         self.browser = self.playwright.chromium.launch(**launch_options)
-        self.context = self.browser.new_context(
-            viewport={"width": 1366, "height": 768},
-            locale="zh-CN",
-        )
+        context_options: Dict[str, Any] = {
+            "viewport": {"width": 1366, "height": 768},
+            "locale": "zh-CN",
+        }
+        state_path = self.storage_state_path()
+        if state_path and state_path.exists():
+            context_options["storage_state"] = str(state_path)
+            self.loaded_storage_state = True
+            print(f"已载入保存的登录会话: {state_path}")
+        self.context = self.browser.new_context(**context_options)
         self.page = self.context.new_page()
         self.page.set_default_timeout(self.config["timeout_ms"])
+
+    def storage_state_path(self) -> Optional[Path]:
+        raw = str(self.config["storage_state_path"] or "").strip()
+        return Path(raw) if raw else None
+
+    def save_storage_state(self) -> None:
+        """登录成功后保存会话，重启时就不必重跑登录（也就绕开最容易触发验证码的一步）。
+
+        文件含登录 cookie，等同于凭据。.gitignore 已覆盖 storage_state*，默认不启用。
+        """
+        state_path = self.storage_state_path()
+        if not state_path or not self.context:
+            return
+        try:
+            if state_path.parent != Path(""):
+                state_path.parent.mkdir(parents=True, exist_ok=True)
+            self.context.storage_state(path=str(state_path))
+            print(f"已保存登录会话: {state_path}")
+        except (OSError, PlaywrightError) as exc:
+            print(f"保存登录会话失败: {redact_urls_in_text(exc)}")
 
     def close(self) -> None:
         for resource in (self.context, self.browser):
@@ -350,8 +477,8 @@ class CourseAutoTester:
         keyword_terms: list[str],
         candidates: list[Dict[str, Any]],
     ) -> tuple[Optional[Dict[str, Any]], list[Dict[str, Any]], str]:
-        min_score = float(self.config.get("course_match_min_score", 0.72))
-        ambiguous_delta = max(0.0, float(self.config.get("course_match_ambiguous_delta", 0.06)))
+        min_score = float(self.config["course_match_min_score"])
+        ambiguous_delta = max(0.0, float(self.config["course_match_ambiguous_delta"]))
         ranked: list[Dict[str, Any]] = []
 
         for candidate in candidates:
@@ -391,9 +518,23 @@ class CourseAutoTester:
         )
         if not ranked:
             return None, [], "no_match"
-        if len(ranked) > 1 and float(ranked[0]["score"]) - float(ranked[1]["score"]) < ambiguous_delta:
-            return None, ranked, "ambiguous"
-        return ranked[0], ranked, "matched"
+
+        # 同一张课程卡的多个 DOM 元素（标题、封面链接……）href 相同但 text/title 不同，
+        # 去重键不同所以会双双存活，分数差又常常落在 ambiguous_delta 内，
+        # 于是同一门课把自己判成了"有歧义"并中止。按 href 归组后再比较。
+        deduped: list[Dict[str, Any]] = []
+        seen_hrefs: set[str] = set()
+        for item in ranked:
+            href = str(item.get("href") or "").strip()
+            if href:
+                if href in seen_hrefs:
+                    continue
+                seen_hrefs.add(href)
+            deduped.append(item)
+
+        if len(deduped) > 1 and float(deduped[0]["score"]) - float(deduped[1]["score"]) < ambiguous_delta:
+            return None, deduped, "ambiguous"
+        return deduped[0], deduped, "matched"
 
     def css_text_value(self, value: str) -> str:
         return value.replace("\\", "\\\\").replace('"', '\\"')
@@ -557,17 +698,26 @@ class CourseAutoTester:
         deadline = time.monotonic() + (timeout_ms or self.config["lookup_timeout_ms"]) / 1000
         last_frame_count = 0
 
+        probe_floor_ms = max(1, int(self.config["locator_probe_min_ms"]))
+
         while time.monotonic() < deadline:
             if not self.page_is_available(f"查找元素 [{description}]"):
                 return None
-            candidates = [self.page.locator(resolved).first]
+            # page.frames 已经包含主 frame。原实现在它之外又加了一个 page.locator(...)，
+            # 于是主文档每轮被探测两次，未命中时白白多花一整个探测超时。
             frames = self.page.frames
             last_frame_count = len(frames)
-            candidates.extend(frame.locator(resolved).first for frame in frames)
+            candidates = [frame.locator(resolved).first for frame in frames]
+
+            # 把剩余预算分摊到本轮候选上，而不是每个候选都硬扣写死的 1 秒 ——
+            # 原实现让调用方传的 timeout_ms 对单次探测完全失效。
+            remaining = max(0.0, deadline - time.monotonic())
+            per_try_ms = int(remaining * 1000 / max(1, len(candidates)))
+            per_try_ms = max(probe_floor_ms, min(1_000, per_try_ms))
 
             for candidate in candidates:
                 try:
-                    candidate.wait_for(state=state, timeout=1_000)
+                    candidate.wait_for(state=state, timeout=per_try_ms)
                     return candidate
                 except (PlaywrightTimeoutError, PlaywrightError):
                     continue
@@ -605,10 +755,12 @@ class CourseAutoTester:
             print(f"输入失败 [{description}]: {redact_urls_in_text(exc)}")
             return False
 
-    def safe_click(self, target: Locator, description: str) -> bool:
+    def safe_click(self, target: Locator, description: str, delay: bool = True) -> bool:
+        """delay=False 用于调用方已经在 expect_popup 窗口之外单独做过随机延迟的场景。"""
         try:
             target.wait_for(state="visible")
-            self.random_delay()
+            if delay:
+                self.random_delay()
             target.click()
             print(f"已点击: {description}")
             return True
@@ -802,6 +954,9 @@ class CourseAutoTester:
         containers = [self.page] + self.page.frames
         saw_visible_item = False
         saw_unfinished_candidate = False
+        # 只有真正扫描过 active 之后的位置，"没有未完成项" 才能解释成 "课程已完成"。
+        # active 恰好是最后一条时循环体一次都不跑，那属于 "没扫到"，不是 "扫完了"。
+        scanned_after_active = False
 
         for container in containers:
             for selector in self.chapter_catalog_selectors():
@@ -832,6 +987,7 @@ class CourseAutoTester:
                     start_pos = active_pos + 1 if after_current and active_pos is not None else 0
 
                     for pos in range(start_pos, len(records)):
+                        scanned_after_active = True
                         _, item, state = records[pos]
 
                         if state.get("completed"):
@@ -840,10 +996,19 @@ class CourseAutoTester:
 
                         saw_unfinished_candidate = True
 
+                        # 用目录项自身的标识做键。旧实现拿完整页面 URL 去匹配 onclick 里的 JS
+                        # 片段（toOld(...) 之类），两者永远不可能相等，去重守卫从未生效过。
                         onclick_val = str(state.get("onclick") or "")
-                        if onclick_val and any(url in onclick_val for url in self.visited_urls if url):
-                            print(f"跳过本次运行已访问任务点: {state.get('text')}")
-                            continue
+                        unit_key = f"{selector}|{onclick_val or state.get('text') or pos}"
+                        visits = self.unit_visit_counts.get(unit_key, 0) + 1
+                        self.unit_visit_counts[unit_key] = visits
+                        if visits > int(self.config["max_unit_revisits"]):
+                            print(
+                                f"同一任务点已重复进入 {visits - 1} 次仍未被标记完成，"
+                                f"判定为无法推进: {state.get('text') or selector}"
+                            )
+                            self.save_debug_screenshot("unit_reentry_loop")
+                            return "failed"
 
                         description = f"未完成任务点: {state.get('text') or selector}"
                         if not self.safe_click_with_optional_popup(item, description):
@@ -860,20 +1025,54 @@ class CourseAutoTester:
                     print(f"扫描章节目录失败 selector={selector}: {redact_urls_in_text(exc)}")
                     continue
 
-        if saw_visible_item and not saw_unfinished_candidate:
+        if saw_visible_item and not saw_unfinished_candidate and scanned_after_active:
             print("章节目录中未发现未完成任务点，可能已经全部完成。")
             return "completed"
 
+        # 扫到了目录项但一个都没检查（active 是最后一条），或压根没扫到东西：
+        # 都交给 click_next_chapter 的后续兜底，不能在这里宣布完课。
         return "not_found"
+
+    def close_orphan_pages(self, before_pages: set) -> None:
+        """回收 expect_popup 没抓到、但确实被打开了的新标签页。
+
+        原实现在超时分支里既不读 popup_info.value 也不关页，长跑时孤儿页会一直累积，
+        最终把浏览器内存吃满。
+        """
+        if not self.context:
+            return
+        try:
+            current = set(self.context.pages)
+        except PlaywrightError:
+            return
+        for page in current - before_pages:
+            if page is self.page:
+                continue
+            try:
+                page.close()
+                print("已关闭未被捕获的新标签页。")
+            except PlaywrightError:
+                continue
 
     def safe_click_with_optional_popup(self, target: Locator, description: str) -> bool:
         if not self.page:
             return False
 
+        # 反检测随机延迟必须保留，但要挪到 expect_popup 窗口之外。
+        # 原实现在 with 块里先睡 2-5 秒，把弹窗预算吃掉了：
+        # CX_MAX_ACTION_DELAY_SECONDS >= 5 时 5000ms 的预算必然在点击发生前就到期。
+        try:
+            target.wait_for(state="visible", timeout=self.config["timeout_ms"])
+        except (PlaywrightTimeoutError, PlaywrightError) as exc:
+            print(f"点击失败 [{description}]: {redact_urls_in_text(exc)}")
+            return False
+        self.random_delay()
+
+        before_pages = set(self.context.pages) if self.context else set()
         clicked = False
         try:
-            with self.page.expect_popup(timeout=5_000) as popup_info:
-                clicked = self.safe_click(target, description)
+            with self.page.expect_popup(timeout=self.config["popup_timeout_ms"]) as popup_info:
+                clicked = self.safe_click(target, description, delay=False)
             if not clicked:
                 return False
             self.page = popup_info.value
@@ -884,6 +1083,7 @@ class CourseAutoTester:
             return True
         except PlaywrightTimeoutError:
             print(f"{description} 未打开新窗口，继续使用当前页面。")
+            self.close_orphan_pages(before_pages)
             return clicked
         except PlaywrightError as exc:
             print(f"处理新窗口失败 [{description}]: {redact_urls_in_text(exc)}")
@@ -898,6 +1098,12 @@ class CourseAutoTester:
         except PlaywrightError as exc:
             print(f"打开登录页失败: {redact_urls_in_text(exc)}")
             return False
+
+        # 载入了保存的会话时，打开登录页通常会被直接重定向到首页，登录表单根本不存在，
+        # 这时再去 safe_fill 只会找不到 #phone 而误判成登录失败。
+        if self.loaded_storage_state and not self.still_on_login_page():
+            print("已使用保存的登录会话，跳过表单登录。")
+            return True
 
         filled_username = self.safe_fill(
             self.selectors["username_input"],
@@ -916,6 +1122,50 @@ class CourseAutoTester:
             return False
 
         self.wait_for_page_settle("登录后页面")
+
+        # 登录环节是最容易出验证码的地方，但 handle_blocking_verification 原先只在学习页调用，
+        # CX_MANUAL_VERIFICATION_WAIT_SECONDS 在这里从来没生效过。
+        if not self.handle_blocking_verification("登录后"):
+            self.save_debug_screenshot("login_verification_blocked")
+            return False
+        self.wait_for_page_settle("验证后页面")
+
+        return self.login_succeeded()
+
+    def still_on_login_page(self) -> bool:
+        if not self.page_is_available("检测登录状态"):
+            return True
+        try:
+            return "passport" in (self.page.url or "").lower()
+        except PlaywrightError:
+            return True
+
+    def login_succeeded(self) -> bool:
+        """校验登录确实成功。原实现点完按钮就无条件返回 True，
+        导致密码过期时会伪装成 "找不到课程卡片" 之类的下游故障。"""
+        if not self.page_is_available("校验登录结果"):
+            return False
+
+        success_selector = str(self.selectors.get("login_success_marker") or "").strip()
+        if success_selector and self.find_locator_in_page_or_frames(
+            success_selector,
+            "登录成功标识",
+            timeout_ms=self.config["login_check_timeout_ms"],
+            log_missing=False,
+        ):
+            print("登录成功。")
+            return True
+
+        if self.still_on_login_page():
+            print(
+                "登录后仍停留在 passport 登录页，判定登录失败。"
+                "请检查 CX_USERNAME / CX_PASSWORD，或平台是否要求验证码/短信验证。"
+            )
+            self.save_debug_screenshot("login_rejected")
+            return False
+
+        if success_selector:
+            print("未匹配到登录成功标识，但已离开登录页，按登录成功继续。")
         return True
 
     def open_course(self) -> bool:
@@ -996,7 +1246,7 @@ class CourseAutoTester:
         if not self.handle_commitment_if_present():
             return False
 
-        chapter_keyword = self.config.get("chapter_keyword", "").strip()
+        chapter_keyword = str(self.config["chapter_keyword"]).strip()
         if chapter_keyword:
             chapter = self.find_text_in_page_or_frames_with_scroll(chapter_keyword, "章节")
             clicked = self.safe_click_with_optional_popup(chapter, f"章节: {chapter_keyword}") if chapter else False
@@ -1020,7 +1270,7 @@ class CourseAutoTester:
         return self.wait_for_learning_content()
 
     def handle_commitment_if_present(self) -> bool:
-        if not self.config.get("auto_commitment", False):
+        if not self.config["auto_commitment"]:
             return True
 
         modal = self.find_locator_in_page_or_frames(
@@ -1135,7 +1385,7 @@ class CourseAutoTester:
 
         print(f"检测到平台验证拦截 [{description}]: {signal}")
         self.save_debug_screenshot(f"verification_required_{description}")
-        wait_seconds = max(0.0, float(self.config.get("manual_verification_wait_seconds", 0.0)))
+        wait_seconds = max(0.0, float(self.config["manual_verification_wait_seconds"]))
         if wait_seconds <= 0:
             print(
                 "未配置 CX_MANUAL_VERIFICATION_WAIT_SECONDS，停止流程。"
@@ -1143,10 +1393,10 @@ class CourseAutoTester:
             )
             return False
 
-        if self.config.get("headless", False):
+        if self.config["headless"]:
             print("当前为 headless 模式，人工输入验证码不可见；建议用 --headed 重新运行。")
 
-        poll_seconds = max(0.5, float(self.config.get("verification_poll_seconds", 2.0)))
+        poll_seconds = max(0.5, float(self.config["verification_poll_seconds"]))
         deadline = time.monotonic() + wait_seconds
         print(f"等待人工处理验证码，最长 {wait_seconds:.0f} 秒...")
         while time.monotonic() < deadline:
@@ -1191,16 +1441,38 @@ class CourseAutoTester:
                     continue
         return videos
 
+    def raw_video_count(self) -> int:
+        """统计所有 frame 里 <video> 标签的原始数量；只做 count()，不等待 attach。"""
+        if not self.page_is_available("统计 video 元素"):
+            return 0
+        selector = self.selectors["video"]
+        total = 0
+        for frame in self.page.frames:
+            try:
+                total += frame.locator(selector).count()
+            except PlaywrightError:
+                continue
+        return total
+
     def wait_for_video_locators(self) -> list[Locator]:
         if not self.page_is_available("等待 video 元素"):
             return []
-        deadline = time.monotonic() + max(0.0, float(self.config.get("video_initial_wait_seconds", 0.0)))
+        full_wait = max(0.0, float(self.config["video_initial_wait_seconds"]))
+        short_wait = max(0.0, float(self.config["video_initial_wait_nonvideo_seconds"]))
+        deadline = time.monotonic() + full_wait
+        shortened = False
         while True:
             if not self.page_is_available("等待 video 元素"):
                 return []
             videos = self.video_locators()
             if videos:
                 return videos
+            # 课件/文档/测验类任务点根本不会有 <video>，原实现仍要空等满 12 秒。
+            # 确认整页（含所有 frame）一个 video 标签都没有之后，把预算压到短等待。
+            if not shortened and short_wait < full_wait and self.raw_video_count() == 0:
+                shortened = True
+                deadline = min(deadline, time.monotonic() + short_wait)
+                print(f"页面未发现任何 video 标签，视频等待缩短为 {short_wait:.1f} 秒。")
             if time.monotonic() >= deadline:
                 return []
             time.sleep(0.5)
@@ -1211,7 +1483,7 @@ class CourseAutoTester:
             return []
         try:
             return self.page.evaluate(
-                """() => {
+                """(tabSelector) => {
                     const visible = element => {
                         if (!element) return false;
                         const style = window.getComputedStyle(element);
@@ -1224,7 +1496,7 @@ class CourseAutoTester:
                     const textOf = element => (element.innerText || element.textContent || '')
                         .replace(/\\s+/g, ' ')
                         .trim();
-                    return Array.from(document.querySelectorAll('#prev_tab li[onclick], .prev_list li[onclick]'))
+                    return Array.from(document.querySelectorAll(tabSelector))
                         .map((element, index) => {
                             const className = String(element.className || '').toLowerCase();
                             return {
@@ -1238,22 +1510,41 @@ class CourseAutoTester:
                             };
                         })
                         .filter(item => item.visible);
-                }"""
+                }""",
+                self.selectors["learning_card_tabs"],
             ) or []
         except PlaywrightError:
             return []
+
+    def warn_if_card_tabs_missing(self) -> None:
+        """卡片条为空、但页面明显有学习内容时告警，避免选择器失效被静默吞掉。"""
+        if not self.page_is_available("检查资源卡片条"):
+            return
+        try:
+            has_content = bool(self.video_locator()) or self.page.locator("iframe").count() > 0
+        except PlaywrightError:
+            return
+        if not has_content:
+            return
+        print(
+            "警告: 页面存在视频/iframe，但资源卡片条为空，"
+            f"选择器可能已失效 (CX_SELECTOR_LEARNING_CARD_TABS="
+            f"{self.selectors['learning_card_tabs']})。"
+            "本任务点只会处理当前激活的卡片。"
+        )
+        self.save_debug_screenshot("card_tabs_empty")
 
     def click_learning_card_by_index(self, index: int, description: str) -> bool:
         if not self.page:
             return False
         try:
-            tabs = self.page.locator("#prev_tab li[onclick], .prev_list li[onclick]")
+            tabs = self.page.locator(self.selectors["learning_card_tabs"])
             if index >= tabs.count():
                 return False
             if not self.safe_click(tabs.nth(index), description):
                 return False
             self.wait_for_page_settle(description)
-            wait_ms = max(0, int(float(self.config.get("learning_card_switch_wait_seconds", 1.0)) * 1000))
+            wait_ms = max(0, int(float(self.config["learning_card_switch_wait_seconds"]) * 1000))
             if wait_ms:
                 self.page.wait_for_timeout(wait_ms)
             return self.wait_for_learning_content()
@@ -1268,6 +1559,11 @@ class CourseAutoTester:
             videos = self.video_locators()
             if video_index < len(videos):
                 return videos[video_index]
+            # 枚举短了（播放器 iframe 正在重载，或 count() 抛错导致整个容器被丢弃）。
+            # 这里绝不能退回 video_locator()：它取的是页面第一个 <video>，
+            # 对 video_index >= 1 必然是上一个已经播完的视频，会被误判成“当前视频已完成”。
+            print(f"video 枚举数({len(videos)})不足 index={video_index}，沿用调用方传入的 locator。")
+            return video
         return self.video_locator() or video
 
     def video_media_ready(self, state: Optional[Dict[str, Any]]) -> bool:
@@ -1412,7 +1708,7 @@ class CourseAutoTester:
                     f"{description} 检测到视频源异常，已切换播放线路 "
                     f"frame#{index}: {result.get('text')}"
                 )
-                time.sleep(max(0.0, float(self.config.get("video_route_switch_wait_seconds", 3.0))))
+                time.sleep(max(0.0, float(self.config["video_route_switch_wait_seconds"])))
                 return True
         return False
 
@@ -1422,7 +1718,7 @@ class CourseAutoTester:
         video_index: Optional[int],
         description: str,
     ) -> Optional[Dict[str, Any]]:
-        wait_seconds = max(0.0, float(self.config.get("video_source_ready_wait_seconds", 15.0)))
+        wait_seconds = max(0.0, float(self.config["video_source_ready_wait_seconds"]))
         deadline = time.monotonic() + wait_seconds
         last_state: Optional[Dict[str, Any]] = None
         switched_route = False
@@ -1464,11 +1760,17 @@ class CourseAutoTester:
             print(f"{description} 等待视频源就绪超时: 未读取到状态")
         return None
 
-    def incomplete_learning_signals(self) -> list[str]:
+    def incomplete_learning_signals(self) -> Optional[list[str]]:
+        """扫描页面上的“未完成”标记。
+
+        返回 None 表示一个容器都没读成功 —— 读不到和“确实没有未完成标记”是两回事，
+        调用方必须把 None 当成不可判定（fail-closed），不能当成已完成。
+        """
         if not self.page:
-            return []
+            return None
 
         signals: list[str] = []
+        read_any = False
         containers = [self.page] + [frame for frame in self.page.frames if frame != self.page.main_frame]
         for index, container in enumerate(containers):
             try:
@@ -1528,16 +1830,19 @@ class CourseAutoTester:
                         return found;
                     }"""
                 )
+                read_any = True
                 for signal in result:
                     label = f"frame#{index}: {signal}"
                     if label not in signals:
                         signals.append(label)
             except PlaywrightError:
                 continue
+        if not read_any:
+            return None
         return signals
 
-    def wait_for_incomplete_signals_to_clear(self) -> list[str]:
-        settle_seconds = max(0.0, float(self.config.get("completion_settle_seconds", 0.0)))
+    def wait_for_incomplete_signals_to_clear(self) -> Optional[list[str]]:
+        settle_seconds = max(0.0, float(self.config["completion_settle_seconds"]))
         deadline = time.monotonic() + settle_seconds
         last_signals = self.incomplete_learning_signals()
         while last_signals and time.monotonic() < deadline:
@@ -1598,14 +1903,23 @@ class CourseAutoTester:
             except (PlaywrightTimeoutError, PlaywrightError):
                 return
 
+    def video_play_control_groups(self) -> list[str]:
+        """把播放控件选择器按 ';' 拆成优先级组；组内保持逗号列表交给 CSS 引擎一次查询。
+
+        没有 ';' 的旧配置会被当成单独一组，行为仍然正确，只是失去组内优先级。
+        """
+        raw = str(self.selectors["video_play_control"])
+        groups = [group.strip() for group in raw.split(";") if group.strip()]
+        return groups or [raw]
+
     def click_video_play_control(self, video: Locator, video_index: Optional[int] = None) -> bool:
         self.dismiss_learning_overlays()
         current_video = self.current_video_locator(video, video_index) or video
-        for selector in [part.strip() for part in self.selectors["video_play_control"].split(",") if part.strip()]:
+        for selector in self.video_play_control_groups():
             play_control = self.find_locator_in_page_or_frames(
                 selector,
                 "视频播放控件",
-                timeout_ms=1_000,
+                timeout_ms=self.config["play_control_probe_ms"],
                 log_missing=False,
             )
             if play_control:
@@ -1874,12 +2188,17 @@ class CourseAutoTester:
         started_at = time.monotonic()
         max_wait = self.config["max_video_wait_seconds"]
         poll_seconds = float(self.config["progress_poll_seconds"])
-        min_poll_seconds = max(0.1, float(self.config.get("progress_min_poll_seconds", 0.5)))
-        completion_margin = max(0.0, float(self.config.get("progress_completion_margin_seconds", 0.8)))
+        min_poll_seconds = max(0.1, float(self.config["progress_min_poll_seconds"]))
+        completion_margin = max(0.0, float(self.config["progress_completion_margin_seconds"]))
+        configured_epsilon = float(self.config["progress_stall_epsilon_seconds"])
+        max_unknown_polls = int(self.config["max_unknown_duration_polls"])
         stall_polls = 0
         last_current: Optional[float] = None
         recovery_attempts = 0
         rate_limit_warned = False
+        # 上一轮实际睡了多久 —— 停滞阈值要按它来缩放，而不是按配置里的绝对值。
+        last_sleep_seconds = poll_seconds
+        unknown_duration_polls = 0
 
         while time.monotonic() - started_at < max_wait:
             if not self.handle_blocking_verification("视频播放"):
@@ -1903,7 +2222,6 @@ class CourseAutoTester:
 
             current = float(state["currentTime"])
             duration = float(state["duration"])
-            ended = bool(state["ended"])
             paused = bool(state["paused"])
             playback_rate = float(state["playbackRate"])
             if duration > 0:
@@ -1915,13 +2233,27 @@ class CourseAutoTester:
             else:
                 print(f"播放进度: {current:.1f}s, 等待视频时长信息...")
 
-            near_end = duration > 0 and current >= duration - max(0.05, min(1.0, completion_margin))
-            if ended or (near_end and paused):
+            if video_is_complete(state, completion_margin):
                 print("当前视频已播放完成")
-                time.sleep(max(0.0, float(self.config.get("video_completion_settle_seconds", 2.0))))
+                time.sleep(max(0.0, float(self.config["video_completion_settle_seconds"])))
                 return True
 
-            if last_current is not None and current <= last_current + self.config["progress_stall_epsilon_seconds"]:
+            # duration 始终为 0（live/HLS 之类非有限时长）时，near_end 永远不成立，
+            # 而 currentTime 一直在走又不会触发停滞判定，可以一直吃满 6 小时预算。
+            if duration <= 0:
+                unknown_duration_polls += 1
+                if unknown_duration_polls >= max_unknown_polls:
+                    print(
+                        f"已连续 {unknown_duration_polls} 轮读不到视频时长，"
+                        "判定当前任务点无法正常判完，停止等待。"
+                    )
+                    self.save_debug_screenshot("video_duration_unknown")
+                    return False
+            else:
+                unknown_duration_polls = 0
+
+            stall_epsilon = stall_epsilon_for(last_sleep_seconds, playback_rate, configured_epsilon)
+            if last_current is not None and current <= last_current + stall_epsilon:
                 stall_polls += 1
             else:
                 stall_polls = 0
@@ -1938,7 +2270,7 @@ class CourseAutoTester:
                 recovery_attempts += 1
                 reason = "paused" if paused else f"播放进度停滞 {stall_polls} 次"
                 print(f"检测到视频播放异常: {reason}，尝试恢复播放。")
-                if recovery_attempts >= int(self.config.get("max_video_recovery_attempts", 18)):
+                if recovery_attempts >= int(self.config["max_video_recovery_attempts"]):
                     print(
                         f"视频恢复尝试已达到上限 {recovery_attempts} 次，"
                         "判定当前任务点存在阻塞或异常。"
@@ -1950,11 +2282,8 @@ class CourseAutoTester:
                     return False
                 stall_polls = 0
 
-            sleep_seconds = poll_seconds
-            if duration > 0 and playback_rate > 0:
-                remaining_media_seconds = max(0.0, duration - current - completion_margin)
-                estimated_remaining_wall_seconds = remaining_media_seconds / max(playback_rate, 0.1) + 0.2
-                sleep_seconds = min(poll_seconds, max(min_poll_seconds, estimated_remaining_wall_seconds))
+            sleep_seconds = next_poll_seconds(state, poll_seconds, min_poll_seconds, completion_margin)
+            last_sleep_seconds = sleep_seconds
             time.sleep(sleep_seconds)
 
         print("等待视频播放完成超时")
@@ -1988,6 +2317,10 @@ class CourseAutoTester:
             return True
 
         card_records = self.learning_card_records()
+        if not card_records:
+            # 卡片条选择器没有兜底：一旦失配就会把 "1课件/2视频/3作业" 的多卡片任务点
+            # 当成单卡片处理，只看当前激活的那张，其余静默留空却照常报成功。
+            self.warn_if_card_tabs_missing()
         if len(card_records) <= 1:
             return self.process_current_learning_card()
 
@@ -2034,9 +2367,18 @@ class CourseAutoTester:
 
         before_url = self.page.url
         clicked = False
+        # 同 safe_click_with_optional_popup：随机延迟先走完，再开 expect_popup 窗口。
         try:
-            with self.page.expect_popup(timeout=3_000) as popup_info:
-                clicked = self.safe_click(target, description)
+            target.wait_for(state="visible", timeout=self.config["timeout_ms"])
+        except (PlaywrightTimeoutError, PlaywrightError) as exc:
+            print(f"点击失败 [{description}]: {redact_urls_in_text(exc)}")
+            return False
+        self.random_delay()
+
+        before_pages = set(self.context.pages) if self.context else set()
+        try:
+            with self.page.expect_popup(timeout=self.config["popup_timeout_ms"]) as popup_info:
+                clicked = self.safe_click(target, description, delay=False)
             if not clicked:
                 return False
             popup = popup_info.value
@@ -2046,8 +2388,9 @@ class CourseAutoTester:
             print(f"已点开并关闭: {description}")
             return True
         except PlaywrightTimeoutError:
+            self.close_orphan_pages(before_pages)
             if not clicked:
-                clicked = self.safe_click(target, description)
+                clicked = self.safe_click(target, description, delay=False)
             if not clicked:
                 return False
 
@@ -2090,7 +2433,7 @@ class CourseAutoTester:
         )
         if not next_button:
             print("没有找到下一节控件，也没有找到未完成任务点。")
-            return "completed" if self.config.get("stop_when_no_next", True) else "failed"
+            return "completed" if self.config["stop_when_no_next"] else "failed"
 
         if not self.safe_click(next_button, "下一章/下一节"):
             return "failed"
@@ -2107,9 +2450,15 @@ class CourseAutoTester:
 
         print("章节目录中没有找到可靠的未完成任务点。")
         incomplete_signals = self.wait_for_incomplete_signals_to_clear()
-        if incomplete_signals:
+        verdict = classify_completion_scan(incomplete_signals)
+        if verdict == "unreadable":
+            # 这是全流程里唯一挡住“误判完课”的防线，读不到就必须拒判，不能放行。
+            print("无法读取页面完成状态（页面/frame 均不可读），拒绝判定为已完成。")
+            self.save_debug_screenshot("incomplete_signals_unreadable")
+            return "failed"
+        if verdict == "incomplete":
             print("没有下一节控件，但当前学习任务仍显示未完成，不能判定全课完成。")
-            for signal in incomplete_signals[:5]:
+            for signal in (incomplete_signals or [])[:5]:
                 print(f"未完成信号: {signal}")
             self.save_debug_screenshot("no_next_but_incomplete")
             return "failed"
@@ -2122,7 +2471,7 @@ class CourseAutoTester:
 
         try:
             next_control = self.find_locator_in_page_or_frames(
-                "#prevNextFocusNext",
+                self.selectors["next_control"],
                 "超星下一节控件",
                 state="visible",
                 timeout_ms=5_000,
@@ -2227,9 +2576,41 @@ class CourseAutoTester:
         if not self.page:
             return
         try:
-            self.page.wait_for_load_state("networkidle", timeout=self.config["timeout_ms"])
+            # 先等真正有意义的 domcontentloaded，再给 networkidle 一个小预算。
+            # 学习页有心跳/进度上报 XHR 和媒体分片，networkidle 往往永远不会到达，
+            # 原实现在每次导航上白白烧掉整个 timeout_ms（默认 15 秒）。
+            self.page.wait_for_load_state("domcontentloaded", timeout=self.config["timeout_ms"])
+            self.page.wait_for_load_state("networkidle", timeout=self.config["settle_timeout_ms"])
         except PlaywrightTimeoutError:
             print(f"{description} 未达到 networkidle，继续执行后续步骤。")
+        except PlaywrightError as exc:
+            # 导航把执行上下文销毁时抛的是普通 PlaywrightError，原实现抓不到，
+            # 会把一次瞬时抖动升级成整轮终止。这里同样只记录并继续。
+            print(f"{description} 等待页面稳定时出错: {redact_urls_in_text(exc)}，继续执行后续步骤。")
+
+    def process_unit_with_retries(self, chapter_index: int) -> bool:
+        """任务点失败时有界重试。
+
+        原实现里任何一个瞬时故障（视频源始终 not ready、课件点击落空、卡片切换失败、
+        恢复配额耗尽）都会直接结束整轮，200 章的课很容易被第 37 章的一次抖动干掉。
+
+        注意这里只重试、不跳过：无条件 click_next_chapter() 前进会把没看完的任务点
+        静默留空，那正是 A1/A4 那类"没看却报完成"的危害。重试用尽仍然以失败退出。
+        """
+        retries = max(0, int(self.config["unit_retries"]))
+        for attempt in range(1, retries + 2):
+            if self.process_current_learning_unit():
+                return True
+            self.save_debug_screenshot(f"learning_unit_failed_{chapter_index}_try{attempt}")
+            if attempt > retries:
+                print(f"第 {chapter_index} 个任务点连续 {attempt} 次失败，终止本轮。")
+                return False
+            if not self.page_is_available("任务点重试"):
+                print("浏览器页面已不可用，无法重试。")
+                return False
+            print(f"第 {chapter_index} 个任务点失败，进行第 {attempt} 次重试...")
+            self.wait_for_page_settle("任务点重试前")
+        return False
 
     def run(self) -> bool:
         try:
@@ -2237,8 +2618,10 @@ class CourseAutoTester:
             if not self.login():
                 self.save_debug_screenshot("login_failed")
                 return False
+            self.save_storage_state()
             if not self.open_course():
-                self.save_debug_screenshot("open_course_failed")
+                # open_course 内部已按具体原因存过截图；换个标签避免同秒同名互相覆盖。
+                self.save_debug_screenshot("open_course_failed_run")
                 return False
             self.course_already_completed = False
             if not self.open_video_chapter():
@@ -2250,10 +2633,7 @@ class CourseAutoTester:
 
             for chapter_index in range(1, self.config["max_chapters"] + 1):
                 print(f"开始处理第 {chapter_index} 个学习任务点")
-                if self.page:
-                    self.visited_urls.add(self.page.url)
-                if not self.process_current_learning_unit():
-                    self.save_debug_screenshot(f"learning_unit_failed_{chapter_index}")
+                if not self.process_unit_with_retries(chapter_index):
                     return False
                 next_result = self.click_next_chapter()
                 if next_result == "advanced":
@@ -2266,9 +2646,11 @@ class CourseAutoTester:
                     return False
             print(
                 f"已达到最大章节数 CX_MAX_CHAPTERS={self.config['max_chapters']}，"
-                "为避免无限循环，流程已停止。"
+                "为避免无限循环，流程已停止。课程未必已经全部完成，请检查后再决定是否提高上限。"
             )
-            return True
+            # 撞上限是 "放弃"，不是 "完成"：必须以非零退出码结束，
+            # 否则外层脚本/计划任务无法区分 "看完了" 和 "跑到上限停了"。
+            return False
         except KeyboardInterrupt:
             print("收到中断信号，准备退出。")
             return False
@@ -2321,6 +2703,24 @@ def build_config_from_args(base_config: Dict[str, Any]) -> Dict[str, Any]:
         config["slow_mo_ms"] = 0
         config["progress_poll_seconds"] = min(float(config["progress_poll_seconds"]), 3.0)
         config["courseware_hold_seconds"] = min(float(config["courseware_hold_seconds"]), 0.2)
+        # 这些固定等待原先不受 --fast-actions 影响，留着约 35 秒/任务点的空转。
+        # 注意：默认值刻意不动 —— video_completion_settle_seconds 是留给平台上报
+        # 进度的窗口，缩短它是拿"可能丢完成记录"换时间，只能显式 opt-in。
+        config["video_completion_settle_seconds"] = min(
+            float(config["video_completion_settle_seconds"]), 0.5
+        )
+        config["learning_card_switch_wait_seconds"] = min(
+            float(config["learning_card_switch_wait_seconds"]), 0.3
+        )
+        for key in (
+            "video_initial_wait_seconds",
+            "video_source_ready_wait_seconds",
+            "completion_settle_seconds",
+        ):
+            config[key] = min(float(config[key]), 3.0)
+        config["video_initial_wait_nonvideo_seconds"] = min(
+            float(config["video_initial_wait_nonvideo_seconds"]), 1.0
+        )
     if args.progress_poll_seconds is not None:
         config["progress_poll_seconds"] = max(0.1, args.progress_poll_seconds)
     if args.courseware_hold_seconds is not None:
@@ -2335,7 +2735,35 @@ def build_config_from_args(base_config: Dict[str, Any]) -> Dict[str, Any]:
     if args.browser_executable:
         config["browser_executable_path"] = args.browser_executable
         config["browser_channel"] = ""
+
+    validate_config(config, parser)
     return config
+
+
+def validate_config(config: Dict[str, Any], parser: argparse.ArgumentParser) -> None:
+    """挡住那些会让整轮运行变成空操作、却仍报成功的配置。"""
+    if int(config["max_chapters"]) < 1:
+        parser.error(
+            f"max_chapters 必须 >= 1（当前 {config['max_chapters']}）。"
+            "设为 0 会让主循环一次都不执行。"
+        )
+    if int(config["max_unit_revisits"]) < 1:
+        parser.error(f"max_unit_revisits 必须 >= 1（当前 {config['max_unit_revisits']}）。")
+    if float(config["progress_poll_seconds"]) <= 0:
+        parser.error(f"progress_poll_seconds 必须 > 0（当前 {config['progress_poll_seconds']}）。")
+
+    # A9 的配套护栏：停滞判定用的是绝对秒数阈值，而一轮里视频实际前进的是
+    # poll × 倍速。poll × rate <= epsilon 时，健康视频每轮都会被误判成停滞。
+    # 判定本身已经改成相对量，这里只是在配置层面再提醒一次。
+    poll = float(config["progress_poll_seconds"])
+    epsilon = float(config["progress_stall_epsilon_seconds"])
+    rate = max(0.1, float(config["playback_rate"]))
+    if poll * rate <= epsilon:
+        print(
+            f"配置警告: progress_poll_seconds({poll}) × playback_rate({rate}) "
+            f"<= progress_stall_epsilon_seconds({epsilon})，"
+            "轮询过密时停滞判定容易误触发；建议提高轮询间隔或降低 epsilon。"
+        )
 
 
 if __name__ == "__main__":
