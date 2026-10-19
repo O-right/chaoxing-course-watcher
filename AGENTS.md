@@ -13,6 +13,8 @@
 - Run launcher: `.\run_chaoxing.ps1 --course "课程名称关键词" --headless --fast-actions --browser-channel chrome`
 - Run directly: `python main.py --course "课程名称关键词" --max-chapters 200 --headless --fast-actions --browser-channel chrome`
 - Syntax check: `python -m py_compile main.py`
+- Unit tests: `python -m unittest discover -s tests -t .`
+- Lint: `pipx run ruff check --select F821,F811,E9 main.py tests`
 - CLI help: `python main.py --help`
 
 ## MUST DO

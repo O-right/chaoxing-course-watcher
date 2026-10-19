@@ -95,6 +95,50 @@ class CourseMatchingTests(unittest.TestCase):
         self.assertEqual(best["match_reason"], "similarity")
         self.assertGreaterEqual(best["score"], 0.8)
 
+    def test_same_card_elements_sharing_href_are_not_ambiguous(self):
+        # 同一张课程卡的 <a> 和包着它的 <h3> 分数相同，按 href 归组后不能算歧义。
+        tester = self.make_tester()
+        terms = tester.course_keyword_terms("药物发现的故事和启示")
+        candidates = [
+            {"text": "药物发现的故事和启示", "href": "https://mooc1.example.test/course/1", "tag": "A"},
+            {"text": "药物发现的故事和启示", "href": "https://mooc1.example.test/course/1", "tag": "H3"},
+        ]
+
+        best, ranked, status = tester.select_best_course_candidate(terms, candidates)
+
+        self.assertEqual(status, "matched")
+        self.assertEqual(best["href"], "https://mooc1.example.test/course/1")
+        self.assertEqual(len(ranked), 1)
+
+    def test_same_named_courses_with_different_links_stay_ambiguous(self):
+        # 课程列表里真实存在两张同名卡片（不同班级），绝不能随便点一张。
+        tester = self.make_tester()
+        terms = tester.course_keyword_terms("马克思主义基本原理")
+        candidates = [
+            {"text": "马克思主义基本原理", "href": "https://mooc1.example.test/course/2"},
+            {"text": "马克思主义基本原理", "href": "https://mooc1.example.test/course/3"},
+        ]
+
+        best, ranked, status = tester.select_best_course_candidate(terms, candidates)
+
+        self.assertIsNone(best)
+        self.assertEqual(status, "ambiguous")
+        self.assertEqual(len(ranked), 2)
+
+    def test_href_less_duplicate_is_still_ambiguous_without_card_href(self):
+        # Python 侧不按文本合并：拿不到卡片链接的同名元素宁可报歧义，也不猜它属于哪张卡。
+        tester = self.make_tester()
+        terms = tester.course_keyword_terms("药物发现的故事和启示")
+        candidates = [
+            {"text": "药物发现的故事和启示", "href": "https://mooc1.example.test/course/1"},
+            {"text": "药物发现的故事和启示", "href": ""},
+        ]
+
+        best, _, status = tester.select_best_course_candidate(terms, candidates)
+
+        self.assertIsNone(best)
+        self.assertEqual(status, "ambiguous")
+
     def test_missing_course_keyword_and_url_fails_fast(self):
         tester = self.make_tester()
         tester.config["course_keyword"] = ""

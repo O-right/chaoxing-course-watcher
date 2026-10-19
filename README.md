@@ -87,6 +87,11 @@ CX_COURSE_KEYWORD=课程名称关键词
 | `CX_AUTO_COMMITMENT` | 是否自动确认学习承诺，默认 `false`；仅在本人阅读并同意后开启 |
 | `CX_MANUAL_VERIFICATION_WAIT_SECONDS` | 遇到人工验证时等待手动处理的秒数 |
 | `CX_SCREENSHOT_DIR` | 失败截图目录，默认是 `logs/screenshots` |
+| `CX_STORAGE_STATE_PATH` | 可选；保存登录会话的路径，留空则不保存。该文件含登录 cookie，等同凭据 |
+| `CX_UNIT_RETRIES` | 单个任务点失败后的重试次数，默认 `2`。只重试、不跳过 |
+| `CX_SELECTOR_<键名大写>` | 可选；覆盖任意内置选择器，平台改版时不必改代码 |
+
+上表只列常用项。`main.py` 支持的全部 `CX_*` 变量都在 `.env.example` 里有说明和默认值，并由 `tests/test_env_documented.py` 保证两者不会脱节。
 
 完整配置示例见 [`.env.example`](.env.example)。
 
@@ -164,23 +169,38 @@ python main.py --help
 7. 确认下一任务点可用并验证页面确实发生变化。
 8. 达到配置上限，或确认没有未完成任务点后退出。
 
+## 退出码
+
+| 退出码 | 含义 |
+|---|---|
+| `0` | 确认没有未完成任务点，流程正常结束 |
+| `1` | 失败退出。包括登录失败、任务点重试用尽、检测不到完成状态、以及**达到 `CX_MAX_CHAPTERS` 上限** |
+
+达到章节上限属于"放弃"而不是"完成"，因此退出码是 `1`。如果你有脚本或计划任务按退出码判断结果，注意这一点。
+
+设计原则是：**无法确认内容已经看完时，宁可响亮地失败，也不报成功**。读不到页面完成状态、目录扫描没扫到东西、video 元素定位不到，都会失败退出并保存截图，而不是继续前进。
+
 ## 常见问题
 
 | 问题 | 处理方式 |
 |---|---|
 | 找不到课程 | 使用课程标题中更完整、更稳定的关键词 |
 | 匹配到多个相近课程 | 使用完整课程名称，或在本地配置准确的 `CX_COURSE_URL` |
-| 登录失败 | 检查本地 `.env` |
+| 登录失败 | 检查本地 `.env`；可配置 `CX_SELECTOR_LOGIN_SUCCESS_MARKER` 让登录校验更严格 |
 | 出现验证码或操作异常 | 使用 `--headed` 手动处理，或停止运行；脚本不会绕过验证 |
 | 浏览器意外关闭 | 尝试可见模式、本机 Chrome，并查看终端中的关闭原因 |
-| 找不到视频或页面结构变化 | 查看本地 `logs/screenshots`，必要时更新可配置 selector |
+| 平台改版导致找不到元素 | 用 `CX_SELECTOR_<键名大写>` 覆盖对应选择器，不必改代码；可用的键见 `.env.example` |
+| 找不到视频或页面结构变化 | 查看本地 `logs/screenshots`，必要时用上一行的方式覆盖选择器 |
 | 视频长时间无进度 | 检查网络、播放器状态和平台倍速限制 |
+| 提示"视频恢复尝试已达到上限" | 若自行调小过 `--progress-poll-seconds`，注意它与 `CX_PROGRESS_STALL_EPSILON_SECONDS` 的关系；启动时会有相应警告 |
+| 每次重跑都要重新登录 | 设置 `CX_STORAGE_STATE_PATH` 保存会话；该文件含登录 cookie，等同凭据，请勿提交 |
 
 ## 验证
 
 ```powershell
-python -m unittest discover -s tests
-python -m py_compile main.py tests\test_closed_page_guards.py tests\test_course_matching.py
+python -m unittest discover -s tests -t .
+python -m py_compile main.py tests\test_closed_page_guards.py tests\test_course_matching.py tests\test_env_documented.py tests\test_video_progress.py
+pipx run ruff check --select F821,F811,E9 main.py tests
 python main.py --help
 git diff --check
 ```

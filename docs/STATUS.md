@@ -1,71 +1,67 @@
-# Status
+# Project Status
 
-## Current Phase
+## Snapshot
 
-Open-source release is complete. The reviewed changes are on `main`, and the GitHub repository is public.
+- Phase: Post-release hardening is merged to `main` (PR #11) and live-validated on a real course, except the multi-video path.
+- Current focus: Dependabot follow-ups; the multi-video live check is deferred by the owner.
+- Branch: `main`. `fix/silent-completion-and-resilience` was merged and deleted.
 
-## Current Focus
+## Completed Recently
 
-This repository now contains only the course-watching workflow. The active local clone is `D:\chaoxing_course_watcher`, tracking `git@github.com:O-right/chaoxing-course-watcher.git`. The old combined workspace at `D:\course_rpa_node` should be treated as a handoff/archive location, not the normal place for course-watcher commits.
+- 2026-10-20 PR #11 merged to `main`. CI passed on Python 3.10 and 3.11: ruff (the `pipx` step's first hosted run), 52 tests with none skipped (the DOM fixtures ran against the runner's Chrome), compile, and CLI help.
+- 2026-10-19 bounded live validation passed on an authorized 6-task-point course: the 4 remaining units were watched and the platform shows 6/6 (100%). The last-catalog-entry fix was exercised for real. Record: `docs/runs/2026-10-19-live-course-validation.md`.
+- `a8c91ae`: the live run exposed two defects in this branch's own changes, both fixed with regression tests. The post-login check raced the redirect, and the first fix polled a stale cached URL. An unlinked course-title wrapper made one course ambiguous with itself. Suite 44 -> 52.
+- `23f7300` (2026-07-27): silent-false-completion fixes, unattended-run resilience, latency trims, configurable selectors; rationale in `docs/DECISIONS.md` (2026-07-27 entries).
 
-The public `main` branch combines course-matching and closed-page guards with a Chinese README, privacy-safe logging, explicit course configuration, conservative public defaults, pinned dependencies, offline CI, Dependabot, an MIT license, and an open-source readiness report. The README and GitHub description use `学习通自动刷课脚本`, while the stable repository slug remains `chaoxing-course-watcher`. No release work is active; the next repository work is dependency maintenance or a bounded authorized live verification.
+## In Progress
 
-## Recent Evidence
+- None.
 
-- Previous authorized live runs from the combined workspace covered full-course completion, a no-unfinished audit, and mixed courseware/video resource handling.
-- The standalone clone is active at `D:\chaoxing_course_watcher` and tracks `git@github.com:O-right/chaoxing-course-watcher.git`.
-- Closed-page guards cover video detection, progress reads, and debug screenshots; scored course selection covers exact, suffix, similarity, ambiguity, and rejection paths.
-- Latest `origin/main` open-source hardening was integrated into the feature branch; the only textual merge conflict was resolved in `README.md`.
-- The owner's final GitHub README edits were preserved, critical privacy and access-boundary wording was restored, and the concurrent `main` README edit was resolved locally.
-- `.env.example` now documents `CX_COURSE_URL` with an empty value, `.env` remains ignored, and no private template values are populated.
-- `python -m unittest discover -s tests` passed with 14 tests after open-source hardening.
-- `python -m py_compile main.py tests\test_closed_page_guards.py tests\test_course_matching.py` passed after the integration.
-- `python main.py --help` and `.\run_chaoxing.ps1 --help` passed and show `--course-url`.
-- Pinned dependencies resolved locally and `python -m pip check` passed.
-- README structure, CI permissions, full-SHA Action pins, Dependabot configuration, secret-pattern checks, ignore checks, and `git diff --check` passed.
-- A custom scan of the complete reachable Git history found no sensitive-path files, high-confidence credentials, course-ID URL parameters, or mobile-number patterns.
-- GitHub Actions run `29097294731` passed Python 3.10 and 3.11 dependency installation, 14 tests, compilation, and Chinese CLI help on Windows for public `main` commit `2b87b0a`.
-- Added standard MIT license with `Copyright (c) 2026 O-right`.
-- Verified gitleaks `8.30.1` official archive SHA256; Git-history and working-directory scans both reported no leaks.
-- pip-audit `2.10.1` found `CVE-2026-28684` in `python-dotenv==1.2.1`; upgrading to `1.2.2` cleared the audit to zero known vulnerabilities.
-- After the final README merge, 14 unit tests, Python compilation, direct and PowerShell CLI help, `pip check`, README fence/link checks, tracked-path privacy checks, and `git diff --check` passed locally.
-- A bounded authorized course-opening smoke previously verified similarity matching without entering chapters or processing videos.
-- PR #1 merged to `main` as `89409808fed66cd9beb7ee88b0f7e0f31ad90e92`; the pull-request and post-merge Python 3.10/3.11 CI runs passed.
-- GitHub reports the repository as public with description `学习通自动刷课脚本`; local `main` and `origin/main` matched after publication.
-- Dependabot opened PR #2 for `actions/setup-python 6.3.0`, PR #3 for `actions/checkout 7.0.0`, and PR #4 for `playwright 1.61.0`; none has been reviewed or merged yet.
+## Next Up
 
-## Next Steps
+- Let Dependabot PR #5 (`setup-python 7.0.0`) and #6 (`checkout 7.0.1`) rebase onto the new `main`, since both touch `ci.yml`, then review and merge them.
+- Review #9 (`playwright 1.63.0`); the DOM-fixture tests now exercise the browser engine in CI. Review #10 (`python-dotenv 1.2.4`).
+- Deferred by owner: a live run on a task point with **multiple videos** (and ideally multiple resource cards).
+- Decide how the card-tabs warning should behave on the new chapter-detail layout (see TASKS).
 
-- Review Dependabot PR #2 and #3 to move GitHub Actions off the Node.js 20 compatibility path.
-- Review the Playwright `1.61.0` change and CI evidence in Dependabot PR #4 before merging it separately.
-- Re-run the target course in a bounded live session to confirm the closed-page guard behavior in the real Chaoxing flow.
-- Use headed mode with manual verification wait if the platform presents a visible verification or the browser closes during a headless run.
-- Keep local `.env` outside Git and do not print or commit private course URLs.
+## Blockers
 
-## Blockers And Cautions
-
-- `.env` exists locally for this clone but is intentionally ignored and must not be committed or printed.
-- The owner accepts that existing Git history exposes a non-noreply author email and named course evidence.
-- Do not claim new live completion without a fresh configured run.
-- The reported closed-page failure has local guard coverage, but the exact live Chaoxing course path has not been re-run after the fix.
-- The course-matching optimization has deterministic unit coverage and one bounded live course-opening smoke, but not full course-flow validation.
-- The latest CI passes, but GitHub annotates the pinned current Actions for Node.js 20 deprecation; Dependabot PR #2 and #3 are the pending upgrade path.
-- The removed tutai deployment is not a viable current runner until its Chaoxing network block is resolved.
+- None. The multi-video check needs a course that actually has such a task point.
 
 ## Active Files
 
-- `main.py`
-- `run_chaoxing.ps1`
-- `requirements.txt`
-- `README.md`
-- `LICENSE`
-- `.env.example`
-- `.gitignore`
-- `SECURITY.md`
-- `security_best_practices_report.md`
-- `.github/workflows/ci.yml`
-- `.github/dependabot.yml`
-- `AGENTS.md`
-- `tests/test_closed_page_guards.py`
-- `tests/test_course_matching.py`
-- `docs/`
+- `main.py` — the whole workflow; this round changed `wait_until_left_login_page` and the candidate JS in `course_candidate_details`.
+- `tests/test_login_check.py`, `tests/test_course_card_dom.py`, `tests/test_course_matching.py` — regression coverage for the live-run fixes.
+- `.github/workflows/ci.yml` — ruff step and compile list; expect conflicts with Dependabot #5/#6.
+- `.env.example` — must document every `CX_*` read (enforced by `tests/test_env_documented.py`).
+- `docs/runs/2026-10-19-live-course-validation.md` — live evidence and open follow-ups.
+
+## Validation
+
+- Ran (2026-10-19/20):
+  - Unit suite: 52 tests OK; the 3 DOM-fixture tests ran against system Chrome.
+  - `py_compile` on `main.py` and every test file.
+  - ruff 0.17.1 `--select F821,F811,E9` from a scratch venv: all checks passed.
+  - `python main.py --help` and `.\run_chaoxing.ps1 --help`: exit 0.
+  - `git diff --check`: clean.
+  - Mutation checks: reverting each live-run fix makes its new test fail.
+  - Live run #5: exit 0, plus a platform-side 6/6 check.
+  - GitHub CI on PR #11 (Python 3.10 and 3.11): every step passed.
+- Not run:
+  - Live run on a multi-video or multi-card task point.
+  - `--fast-actions` timing on a real course.
+  - Headed mode, manual verification wait, or `CX_STORAGE_STATE_PATH` in a live run.
+
+## Notes For Next Session
+
+- The active clone is `D:\dev\active\chaoxing_course_watcher` (remote `O-right/chaoxing-course-watcher`). `D:\dev\active\course_rpa_node\chaoxing_course_watcher` is the old combined-workspace archive.
+- Exit-code contract: reaching `CX_MAX_CHAPTERS` exits 1. Re-check any wrapper that treated exit 0 as "finished".
+- On the new chapter-detail layout, every single-video unit triggers the "资源卡片条为空" warning and a screenshot. That is harmless there; the right behavior for multi-card units is still undecided.
+- Course keywords must be close to the real title (match gate 0.68); otherwise use `--course-url`.
+- `CX_SELECTOR_LOGIN_SUCCESS_MARKER` defaults to empty, so a login counts as successful once the page leaves the passport host.
+- In sync Playwright loops, wait with `page.wait_for_timeout`, not `time.sleep`, when polling cached state such as `page.url` (see DECISIONS 2026-10-19).
+- `CX_STORAGE_STATE_PATH` (off by default) stores login cookies; keep it outside the repo. `CX_SELECTOR_VIDEO_PLAY_CONTROL` uses `;` between priority groups.
+- The owner accepts the existing Git history metadata exposure. tutai is not a viable runner until its Chaoxing network block is resolved.
+- Logs, screenshots, `.env`, and storage state stay untracked. Live logs and screenshots show the account display name and school.
+
+_Last sync: 2026-10-20 · Claude Code_
