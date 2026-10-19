@@ -594,11 +594,28 @@ class CourseAutoTester:
                     if (!visible(element) && !visible(link) && !visible(root)) {
                         return null;
                     }
+                    // 元素本身不在链接里（实测：包着 <a class="color1"> 的 <h3> 标题）时，
+                    // href 为空就和同一张卡的 <a> 无法按 href 归组，同一门课会把自己判成歧义。
+                    // 从元素自身往上找第一层含链接的节点：恰好一个不同链接才认定是这张卡的入口，
+                    // 多于一个说明已经到了课程列表层，留空、维持原有的歧义判定。
+                    const singleCardHref = start => {
+                        let node = start;
+                        for (let depth = 0; node && depth < 4; depth += 1, node = node.parentElement) {
+                            const hrefs = new Set(
+                                Array.from(node.querySelectorAll('a[href]'))
+                                    .map(a => a.href)
+                                    .filter(href => href && !/^javascript:/i.test(href))
+                            );
+                            if (hrefs.size === 1) return Array.from(hrefs)[0];
+                            if (hrefs.size > 1) return '';
+                        }
+                        return '';
+                    };
                     return {
                         text: textOf(element).slice(0, 180),
                         title: (element.getAttribute('title') || (link && link.getAttribute('title')) || '').trim(),
                         container_text: textOf(root).slice(0, 240),
-                        href: link ? (link.href || link.getAttribute('href') || '') : '',
+                        href: link ? (link.href || link.getAttribute('href') || '') : singleCardHref(element),
                         tag: element.tagName
                     };
                 }"""
@@ -1140,6 +1157,22 @@ class CourseAutoTester:
         except PlaywrightError:
             return True
 
+    def wait_until_left_login_page(self) -> bool:
+        """等前端把页面从 passport 跳走。
+
+        超星登录是 AJAX 提交后再由前端跳转，networkidle 可能在登录请求返回前就满足，
+        点完按钮立刻读一次 URL 会把成功登录误判成"仍停留在登录页"（实测复现过）。
+
+        这里必须用 page.wait_for_timeout 而不是 time.sleep：sync API 的 page.url
+        只读本地缓存，time.sleep 期间 Playwright 不处理导航事件，缓存永远不会更新。
+        """
+        deadline = time.monotonic() + self.config["login_check_timeout_ms"] / 1000
+        while self.still_on_login_page():
+            if not self.page_is_available("等待登录跳转") or time.monotonic() >= deadline:
+                return False
+            self.page.wait_for_timeout(500)
+        return True
+
     def login_succeeded(self) -> bool:
         """校验登录确实成功。原实现点完按钮就无条件返回 True，
         导致密码过期时会伪装成 "找不到课程卡片" 之类的下游故障。"""
@@ -1156,7 +1189,7 @@ class CourseAutoTester:
             print("登录成功。")
             return True
 
-        if self.still_on_login_page():
+        if not self.wait_until_left_login_page():
             print(
                 "登录后仍停留在 passport 登录页，判定登录失败。"
                 "请检查 CX_USERNAME / CX_PASSWORD，或平台是否要求验证码/短信验证。"

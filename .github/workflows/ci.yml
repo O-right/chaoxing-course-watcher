@@ -55,7 +55,7 @@ jobs:
         run: python -m unittest discover -s tests -t .
 
       - name: Compile Python files
-        run: python -m py_compile main.py tests\test_closed_page_guards.py tests\test_course_matching.py tests\test_env_documented.py tests\test_video_progress.py
+        run: python -m py_compile main.py tests\test_closed_page_guards.py tests\test_course_card_dom.py tests\test_course_matching.py tests\test_env_documented.py tests\test_login_check.py tests\test_video_progress.py
 
       - name: Check CLI help
         run: python main.py --help
