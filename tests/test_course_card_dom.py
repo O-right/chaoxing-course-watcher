@@ -1,6 +1,7 @@
 """用真实浏览器引擎跑课程卡片候选收集的 JS。
 
-本机没有可用的 Chromium / Chrome 时整组跳过（CI 不装浏览器，这组只在本地跑）。
+既没有 Playwright 自带 Chromium 也没有系统 Chrome 时整组跳过。
+GitHub 的 windows-latest runner 预装 Chrome，所以 CI 上这组会真实运行。
 夹具结构取自实测的课程列表：div.course > div.course-info > h3.inlineBlock > a.color1。
 """
 

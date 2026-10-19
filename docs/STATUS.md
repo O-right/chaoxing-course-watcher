@@ -2,12 +2,13 @@
 
 ## Snapshot
 
-- Phase: Post-release hardening, live-validated on a real course except the multi-video path.
-- Current focus: the branch is ready to push and open a PR; the multi-video live check is deferred by the owner.
-- Branch: `fix/silent-completion-and-resilience`, local only (not pushed). Based on `23fa1b2`; `origin/main` is 2 commits ahead (Dependabot PR #8, `python-dotenv 1.2.3`, no overlap with this branch).
+- Phase: Post-release hardening is merged to `main` (PR #11) and live-validated on a real course, except the multi-video path.
+- Current focus: Dependabot follow-ups; the multi-video live check is deferred by the owner.
+- Branch: `main`. `fix/silent-completion-and-resilience` was merged and deleted.
 
 ## Completed Recently
 
+- 2026-10-20 PR #11 merged to `main`. CI passed on Python 3.10 and 3.11: ruff (the `pipx` step's first hosted run), 52 tests with none skipped (the DOM fixtures ran against the runner's Chrome), compile, and CLI help.
 - 2026-10-19 bounded live validation passed on an authorized 6-task-point course: the 4 remaining units were watched and the platform shows 6/6 (100%). The last-catalog-entry fix was exercised for real. Record: `docs/runs/2026-10-19-live-course-validation.md`.
 - `a8c91ae`: the live run exposed two defects in this branch's own changes, both fixed with regression tests. The post-login check raced the redirect, and the first fix polled a stale cached URL. An unlinked course-title wrapper made one course ambiguous with itself. Suite 44 -> 52.
 - `23f7300` (2026-07-27): silent-false-completion fixes, unattended-run resilience, latency trims, configurable selectors; rationale in `docs/DECISIONS.md` (2026-07-27 entries).
@@ -18,10 +19,10 @@
 
 ## Next Up
 
-- Merge `origin/main` into the branch, push, open a PR, and confirm CI. The `pipx`-based ruff step has never run on a hosted runner.
-- Decide whether to merge to `main`. The only fix without live evidence is the multi-video path.
+- Let Dependabot PR #5 (`setup-python 7.0.0`) and #6 (`checkout 7.0.1`) rebase onto the new `main`, since both touch `ci.yml`, then review and merge them.
+- Review #9 (`playwright 1.63.0`); the DOM-fixture tests now exercise the browser engine in CI. Review #10 (`python-dotenv 1.2.4`).
 - Deferred by owner: a live run on a task point with **multiple videos** (and ideally multiple resource cards).
-- After the merge, let Dependabot PR #5 (`setup-python 7.0.0`) and #6 (`checkout 7.0.1`) rebase, since both touch `ci.yml`. Review #9 (`playwright 1.63.0`) with the DOM-fixture tests, and #10 (`python-dotenv 1.2.4`).
+- Decide how the card-tabs warning should behave on the new chapter-detail layout (see TASKS).
 
 ## Blockers
 
@@ -45,8 +46,8 @@
   - `git diff --check`: clean.
   - Mutation checks: reverting each live-run fix makes its new test fail.
   - Live run #5: exit 0, plus a platform-side 6/6 check.
+  - GitHub CI on PR #11 (Python 3.10 and 3.11): every step passed.
 - Not run:
-  - GitHub CI for this branch (not pushed).
   - Live run on a multi-video or multi-card task point.
   - `--fast-actions` timing on a real course.
   - Headed mode, manual verification wait, or `CX_STORAGE_STATE_PATH` in a live run.

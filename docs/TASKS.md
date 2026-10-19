@@ -92,8 +92,8 @@
 - [x] Run compile, unit tests, ruff, CLI help, launcher help, and `git diff --check`.
 - [ ] Run a bounded authorized live session against a task point with **multiple videos** — deferred by owner on 2026-10-19; the validated course had single-video units only.
 - [x] Run a bounded authorized live session against a catalog whose active item is the **last visible entry** (2026-10-19, run #5).
-- [ ] Merge `origin/main` (Dependabot PR #8) into the branch, push, and confirm the new ruff CI step passes on a GitHub-hosted runner.
-- [ ] Decide whether to merge to `main`; only the multi-video path still lacks live evidence.
+- [x] Merge `origin/main` (Dependabot PR #8) into the branch, push, and confirm the new ruff CI step passes on a GitHub-hosted runner (PR #11, Python 3.10/3.11 green, 52 tests none skipped).
+- [x] Decide whether to merge to `main`: the owner merged PR #11 on 2026-10-20; the multi-video live check stays open above.
 
 ### Live-run fixes (2026-10-19, `a8c91ae`)
 
