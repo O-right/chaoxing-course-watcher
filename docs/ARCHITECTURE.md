@@ -68,5 +68,5 @@ This repository is a single-workflow Python + Playwright project for Chaoxing co
 - Unit suite: `python -m unittest discover -s tests -t .`.
 - Lint (undefined names / redefinitions only): `pipx run ruff check --select F821,F811,E9 main.py tests`.
 - PowerShell forwarding smoke: `.\run_chaoxing.ps1 --help`.
-- Use local/offline Playwright fixtures for selector and recovery changes when practical.
+- Use local/offline Playwright fixtures for selector and recovery changes when practical. `tests/test_course_card_dom.py` runs the course-candidate JS against a static HTML fixture in a real browser engine. It skips when neither bundled Chromium nor system Chrome is available, which is the case in CI.
 - Use bounded live Chaoxing runs only when authorized and configured.

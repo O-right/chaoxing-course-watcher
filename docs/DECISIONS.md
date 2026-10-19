@@ -89,3 +89,19 @@ Reason: Reusing a session avoids replaying the login step, which is where verifi
 Decision: Present the project as `学习通自动刷课脚本` in the README heading and GitHub repository description, while retaining the existing `chaoxing-course-watcher` repository slug.
 
 Reason: The Chinese display name states the project's purpose directly. Keeping the existing slug avoids breaking clone commands, links, and the already-open pull request immediately before publication.
+
+## 2026-10-19: Poll Browser State With Playwright Waits, Not `time.sleep`
+
+Decision: A loop that waits for browser-side state by re-reading cached sync-API properties (`page.url`, `page.frames`) must pause with `page.wait_for_timeout(...)` or another Playwright call, never with `time.sleep`.
+
+Reason: In the sync API those properties change only when Playwright processes driver events, and that happens during Playwright calls. In the 2026-10-19 live run, `page.url` stayed on the passport host for 20 seconds after a successful login while the loop slept. The same loop using `wait_for_timeout` saw the redirect at 0.8 seconds. Loops that already call `evaluate`, `wait_for`, or `count` every iteration are unaffected, which is why only the new login check hit this.
+
+Alternatives: Keeping `time.sleep` with a dummy `evaluate` works but hides why it is needed. `page.wait_for_url(predicate)` would also work, but the explicit polling loop matches the rest of the file and re-runs the closed-page guard every iteration.
+
+## 2026-10-19: An Unlinked Course Candidate Inherits A Card Link Only When It Is Unambiguous
+
+Decision: The live course list wraps `a.color1` in `h3.inlineBlock`. When a matched element is not inside a link, `course_candidate_details` walks up from the element to the first level that contains links. It adopts the href only if that level has exactly one distinct non-`javascript:` link; otherwise href stays empty. Python-side ranking never merges candidates by text.
+
+Reason: Without an href, the title wrapper could not be grouped with its own link, so the course was rejected as ambiguous against itself. Merging by text instead would also merge two genuinely different courses with the same title. The live list contains such a pair, and merging them would open one at random.
+
+Consequence: An unlinked title in a card with several distinct links still fails as ambiguous. `--course-url` remains the exact fallback.

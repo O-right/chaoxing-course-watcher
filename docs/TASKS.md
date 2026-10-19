@@ -26,7 +26,7 @@
 - [x] Preserve `--course-url` documentation and add `CX_COURSE_URL` to the safe environment template.
 - [x] Re-run 9 unit tests, Python compilation, CLI help, ignore/template checks, and staged diff checks after integration.
 - [x] Review and merge PR #1 after GitHub confirms the synchronized branch is conflict-free.
-- [ ] Run a bounded live course smoke only when credentials and authorization are available.
+- [x] Run a bounded live course smoke only when credentials and authorization are available (2026-10-19, `docs/runs/2026-10-19-live-course-validation.md`).
 
 ## Open Source Preparation
 
@@ -90,16 +90,28 @@
 - [x] Extract pure decision functions and cover them; suite grew from 14 to 44 tests.
 - [x] Mutation-test the new regression tests to confirm they fail when the fixes are reverted.
 - [x] Run compile, unit tests, ruff, CLI help, launcher help, and `git diff --check`.
-- [ ] Run a bounded authorized live session against a task point with **multiple videos**.
-- [ ] Run a bounded authorized live session against a catalog whose active item is the **last visible entry**.
-- [ ] Push the branch and confirm the new ruff CI step passes on a GitHub-hosted runner.
-- [ ] Decide whether to merge to `main` after live evidence exists.
+- [ ] Run a bounded authorized live session against a task point with **multiple videos** — deferred by owner on 2026-10-19; the validated course had single-video units only.
+- [x] Run a bounded authorized live session against a catalog whose active item is the **last visible entry** (2026-10-19, run #5).
+- [ ] Merge `origin/main` (Dependabot PR #8) into the branch, push, and confirm the new ruff CI step passes on a GitHub-hosted runner.
+- [ ] Decide whether to merge to `main`; only the multi-video path still lacks live evidence.
+
+### Live-run fixes (2026-10-19, `a8c91ae`)
+
+- [x] Wait for the post-login redirect with an event-pumping poll (`wait_until_left_login_page`, `page.wait_for_timeout`) instead of one cached `page.url` read.
+- [x] Give an unlinked course-title wrapper its card's single link so one course is not ambiguous with itself; keep it ambiguous when the card has several distinct links.
+- [x] Add `tests/test_login_check.py`, `tests/test_course_card_dom.py` (real browser engine, skips without Chromium/Chrome), and href-grouping cases; suite 44 -> 52.
+- [x] Mutation-check both fixes, run ruff, compile, CLI help, launcher help, and `git diff --check`.
 
 ## Future Work
 
-- [ ] Review and merge Dependabot PR #2 (`actions/setup-python 6.3.0`) after its diff and CI pass review.
-- [ ] Review and merge Dependabot PR #3 (`actions/checkout 7.0.0`) after its diff and CI pass review.
-- [ ] Review Dependabot PR #4 (`playwright 1.61.0`) independently and verify tests before merging.
+- [x] Dependabot PR #2, #3, #4, #7 were closed as superseded; #8 (`python-dotenv 1.2.3`) was merged on 2026-09-27.
+- [ ] Review and merge Dependabot PR #5 (`actions/setup-python 7.0.0`) after this branch merges; it touches `ci.yml`.
+- [ ] Review and merge Dependabot PR #6 (`actions/checkout 7.0.1`) after this branch merges; it touches `ci.yml`.
+- [ ] Review Dependabot PR #9 (`playwright 1.63.0`) independently; run the suite including the DOM-fixture tests before merging.
+- [ ] Review Dependabot PR #10 (`python-dotenv 1.2.4`).
+- [ ] Decide how `warn_if_card_tabs_missing` should behave on the new chapter-detail layout: it fires and screenshots on every single-video unit. This needs a multi-card unit in that layout to decide.
+- [ ] Confirm the `--fast-actions` timing changes on a real course before relying on them.
+- [ ] Consider printing the closest course candidates on `no_match`, so a near-miss keyword is diagnosable without the screenshot.
 - [ ] Add structured logging if long-run diagnostics need cleaner output.
 - [ ] Add selector profiles only if another course platform becomes a real requirement.
 - [ ] Re-evaluate tutai or another remote runner only after a viable Chaoxing network path is available.

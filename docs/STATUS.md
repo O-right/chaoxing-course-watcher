@@ -1,72 +1,66 @@
-# Status
+# Project Status
 
-## Current Phase
+## Snapshot
 
-Post-release hardening. A multi-dimension code review produced a ranked optimization plan, and the accepted items are implemented on the feature branch `fix/silent-completion-and-resilience` (commit `23f7300`). The branch is **not pushed and not merged**; `main` is unchanged and still matches `origin/main`.
+- Phase: Post-release hardening, live-validated on a real course except the multi-video path.
+- Current focus: the branch is ready to push and open a PR; the multi-video live check is deferred by the owner.
+- Branch: `fix/silent-completion-and-resilience`, local only (not pushed). Based on `23fa1b2`; `origin/main` is 2 commits ahead (Dependabot PR #8, `python-dotenv 1.2.3`, no overlap with this branch).
 
-## Current Focus
+## Completed Recently
 
-This repository contains only the course-watching workflow. The active local clone moved to `D:\dev\active\chaoxing_course_watcher` during a D-drive reorganisation and still tracks `git@github.com:O-right/chaoxing-course-watcher.git`. Do not confuse it with `D:\dev\active\course_rpa_node\chaoxing_course_watcher`, which is the older combined-workspace archive (2012-line `main.py`, remote `course-rpa-node.git`).
+- 2026-10-19 bounded live validation passed on an authorized 6-task-point course: the 4 remaining units were watched and the platform shows 6/6 (100%). The last-catalog-entry fix was exercised for real. Record: `docs/runs/2026-10-19-live-course-validation.md`.
+- `a8c91ae`: the live run exposed two defects in this branch's own changes, both fixed with regression tests. The post-login check raced the redirect, and the first fix polled a stale cached URL. An unlinked course-title wrapper made one course ambiguous with itself. Suite 44 -> 52.
+- `23f7300` (2026-07-27): silent-false-completion fixes, unattended-run resilience, latency trims, configurable selectors; rationale in `docs/DECISIONS.md` (2026-07-27 entries).
 
-The current work fixes defects that let a run report success without actually watching the content, hardens unattended multi-hour runs, cuts avoidable wall-clock time, and closes the gap between `CONFIG` and `.env.example`. Everything is validated offline only. The next milestone is a bounded authorized live run to confirm the two highest-severity fixes against the real Chaoxing DOM.
+## In Progress
 
-## Review Findings Behind This Work
+- None.
 
-A six-dimension review (correctness, robustness, security, architecture, performance, testing) ran each finding through an adversarial verification pass. Findings that survived were ranked by run impact over effort and grouped A/B/C/D; group D was explicitly rejected as not worth the effort for a solo tool. The full report is not tracked in Git.
+## Next Up
 
-Two findings were reproduced independently before implementation:
-- `current_video_locator` falling back to the first `<video>` was confirmed by reading the call chain `wait_until_video_finished` -> `read_video_state` -> completion check.
-- The stall-threshold defect was confirmed with a standalone simulation showing a healthy video trips the stall counter whenever `poll x rate <= progress_stall_epsilon_seconds`, exhausting all 18 recovery attempts and failing the run.
+- Merge `origin/main` into the branch, push, open a PR, and confirm CI. The `pipx`-based ruff step has never run on a hosted runner.
+- Decide whether to merge to `main`. The only fix without live evidence is the multi-video path.
+- Deferred by owner: a live run on a task point with **multiple videos** (and ideally multiple resource cards).
+- After the merge, let Dependabot PR #5 (`setup-python 7.0.0`) and #6 (`checkout 7.0.1`) rebase, since both touch `ci.yml`. Review #9 (`playwright 1.63.0`) with the DOM-fixture tests, and #10 (`python-dotenv 1.2.4`).
 
-## Recent Evidence
+## Blockers
 
-- `python -m unittest discover -s tests -t .` passes with 44 tests (was 14).
-- `python -m py_compile main.py tests\test_closed_page_guards.py tests\test_course_matching.py tests\test_env_documented.py tests\test_video_progress.py` passes.
-- `ruff check --select F821,F811,E9 main.py tests` reports `All checks passed` (run from a scratch virtualenv; `pipx` is not installed locally).
-- `python main.py --help` and `.\run_chaoxing.ps1 --help` exit 0.
-- `git diff --check` is clean; `.env`, `logs/`, screenshots, and storage-state paths were confirmed absent from the staged set.
-- Config-path smoke checks pass: `--max-chapters 0` and `CX_MAX_CHAPTERS=0` are rejected, `CX_MAX_CHAPTERS=1OO` warns instead of silently defaulting, a too-dense poll interval warns, and `--headless`/`--headed` remain mutually exclusive.
-- Mutation testing confirmed the new regression tests have force: reverting the `current_video_locator` fix fails 1 test, reverting the stall-threshold fix fails 8, and reverting the fail-closed completion scan fails 1. The completion-scan case failed to fail on the first attempt, so a direct test for `incomplete_learning_signals` returning `None` was added.
-- `main.py` line endings are unchanged (LF in both `HEAD` and the working copy); the `core.autocrlf` warning during `git add` is pre-existing noise.
-
-## Next Steps
-
-- Review `git diff main` on `fix/silent-completion-and-resilience`, then push and let CI confirm the new ruff step on a GitHub-hosted runner (`pipx` was never exercised in real CI).
-- Run a bounded authorized live session to validate the two fixes that offline tests cannot reach:
-  - a task point with **multiple videos**, to confirm the second and later videos are no longer skipped;
-  - a catalog whose active item is the **last visible entry**, to confirm the run no longer declares the course complete early.
-- Confirm the `--fast-actions` timing changes on a real course before relying on them.
-- Review Dependabot PR #2 (`actions/setup-python 6.3.0`), PR #3 (`actions/checkout 7.0.0`), and PR #4 (`playwright 1.61.0`); all three are still open and unreviewed.
-- Keep local `.env` outside Git and do not print or commit private course URLs.
-
-## Blockers And Cautions
-
-- **No live run has validated any of this work.** All evidence above is offline. Do not claim live completion without a fresh configured run.
-- The exit-code contract changed: reaching `CX_MAX_CHAPTERS` now returns `False` (exit code 1) instead of `True`. Any wrapper, scheduled task, or script that treated exit 0 as "course finished" must be re-checked.
-- `CX_STORAGE_STATE_PATH` is off by default. When enabled, the file contains login cookies and is equivalent to credentials; `.gitignore` covers `storage_state*` but the file is better kept outside the repository.
-- `CX_SELECTOR_VIDEO_PLAY_CONTROL` now uses `;` to separate priority groups and `,` within a group. A pre-existing comma-only override still works but collapses into a single group and loses intra-group priority.
-- The `login_success_marker` selector defaults to empty, so login verification currently relies on "did we leave the passport page". Setting `CX_SELECTOR_LOGIN_SUCCESS_MARKER` makes it stricter.
-- The owner accepts that existing Git history exposes a non-noreply author email and named course evidence.
-- The latest CI passes, but GitHub annotates the pinned Actions for Node.js 20 deprecation; Dependabot PR #2 and #3 are the pending upgrade path.
-- The removed tutai deployment is not a viable runner until its Chaoxing network block is resolved.
+- None. The multi-video check needs a course that actually has such a task point.
 
 ## Active Files
 
-- `main.py`
-- `run_chaoxing.ps1`
-- `requirements.txt`
-- `README.md`
-- `LICENSE`
-- `.env.example`
-- `.gitignore`
-- `SECURITY.md`
-- `security_best_practices_report.md`
-- `.github/workflows/ci.yml`
-- `.github/dependabot.yml`
-- `AGENTS.md`
-- `tests/__init__.py`
-- `tests/test_closed_page_guards.py`
-- `tests/test_course_matching.py`
-- `tests/test_env_documented.py`
-- `tests/test_video_progress.py`
-- `docs/`
+- `main.py` — the whole workflow; this round changed `wait_until_left_login_page` and the candidate JS in `course_candidate_details`.
+- `tests/test_login_check.py`, `tests/test_course_card_dom.py`, `tests/test_course_matching.py` — regression coverage for the live-run fixes.
+- `.github/workflows/ci.yml` — ruff step and compile list; expect conflicts with Dependabot #5/#6.
+- `.env.example` — must document every `CX_*` read (enforced by `tests/test_env_documented.py`).
+- `docs/runs/2026-10-19-live-course-validation.md` — live evidence and open follow-ups.
+
+## Validation
+
+- Ran (2026-10-19/20):
+  - Unit suite: 52 tests OK; the 3 DOM-fixture tests ran against system Chrome.
+  - `py_compile` on `main.py` and every test file.
+  - ruff 0.17.1 `--select F821,F811,E9` from a scratch venv: all checks passed.
+  - `python main.py --help` and `.\run_chaoxing.ps1 --help`: exit 0.
+  - `git diff --check`: clean.
+  - Mutation checks: reverting each live-run fix makes its new test fail.
+  - Live run #5: exit 0, plus a platform-side 6/6 check.
+- Not run:
+  - GitHub CI for this branch (not pushed).
+  - Live run on a multi-video or multi-card task point.
+  - `--fast-actions` timing on a real course.
+  - Headed mode, manual verification wait, or `CX_STORAGE_STATE_PATH` in a live run.
+
+## Notes For Next Session
+
+- The active clone is `D:\dev\active\chaoxing_course_watcher` (remote `O-right/chaoxing-course-watcher`). `D:\dev\active\course_rpa_node\chaoxing_course_watcher` is the old combined-workspace archive.
+- Exit-code contract: reaching `CX_MAX_CHAPTERS` exits 1. Re-check any wrapper that treated exit 0 as "finished".
+- On the new chapter-detail layout, every single-video unit triggers the "资源卡片条为空" warning and a screenshot. That is harmless there; the right behavior for multi-card units is still undecided.
+- Course keywords must be close to the real title (match gate 0.68); otherwise use `--course-url`.
+- `CX_SELECTOR_LOGIN_SUCCESS_MARKER` defaults to empty, so a login counts as successful once the page leaves the passport host.
+- In sync Playwright loops, wait with `page.wait_for_timeout`, not `time.sleep`, when polling cached state such as `page.url` (see DECISIONS 2026-10-19).
+- `CX_STORAGE_STATE_PATH` (off by default) stores login cookies; keep it outside the repo. `CX_SELECTOR_VIDEO_PLAY_CONTROL` uses `;` between priority groups.
+- The owner accepts the existing Git history metadata exposure. tutai is not a viable runner until its Chaoxing network block is resolved.
+- Logs, screenshots, `.env`, and storage state stay untracked. Live logs and screenshots show the account display name and school.
+
+_Last sync: 2026-10-20 · Claude Code_
