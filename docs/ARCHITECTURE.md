@@ -15,6 +15,14 @@ This repository is a single-workflow Python + Playwright project for Chaoxing co
     - `next_poll_seconds(state, poll, min_poll, margin)` — adaptive progress-poll interval.
     - `classify_completion_scan(signals)` — maps a completion scan to `unreadable` / `incomplete` / `clear`.
   - `CourseAutoTester` holds the browser-bound workflow. `build_config_from_args` layers CLI flags over `CONFIG` and then calls `validate_config`, which rejects settings that would make a run a no-op.
+- `gui.py`
+  - Desktop UI (Tkinter, standard library only). It is a thin shell: it never imports the workflow, and it runs `main.py` as a subprocess with the form's settings as `CX_*` environment variables. Completion, failure, and exit-code semantics therefore stay in `main.py` alone.
+  - Every UI-managed key is passed to the child explicitly, empty values included, because `load_dotenv` in `main.py` does not override existing variables.
+  - With 「记住设置」 checked, it rewrites only its managed keys in `.env`, atomically and with CRLF preserved. Other lines stay as they are.
+  - It parses `main.py`'s log lines for status, task point, and video progress, and stores one log per run in `logs/ui/`. Stop uses `taskkill /T /F`, so the Playwright driver and browser exit too.
+  - `--create-shortcuts` writes Desktop and Start Menu `.lnk` files through `IShellLinkW`/`IPropertyStore` (ctypes). They carry the same AppUserModelID the window sets, so taskbar grouping and pinning match. The icon is drawn in code and written to a gitignored `app.ico`.
+- `start_ui.bat`
+  - Double-click launcher for `gui.py` (`pythonw`, with a `python` fallback that pauses on error).
 - `run_chaoxing.ps1`
   - PowerShell launcher.
   - Loads local `.env` values when present and forwards CLI arguments to `main.py`.
@@ -48,6 +56,7 @@ This repository is a single-workflow Python + Playwright project for Chaoxing co
 - Course targets must be configured explicitly; no course is selected by default.
 - URL paths, query values, and fragments are redacted from terminal diagnostics.
 - Automatic commitment confirmation is disabled by default.
+- `CX_FAST_ACTIONS=true` is the environment form of `--fast-actions`; either one enables the shortened timings.
 - Every selector in `CONFIG["selectors"]` can be overridden with `CX_SELECTOR_<KEY>`, so a Chaoxing front-end change does not require a source edit. `CX_SELECTOR_VIDEO_PLAY_CONTROL` uses `;` between priority groups and `,` within a group.
 - `tests/test_env_documented.py` fails the build if a `CX_*` variable read by `main.py` is missing from `.env.example`, or if `.env.example` documents a variable the code no longer reads.
 - Session persistence (`CX_STORAGE_STATE_PATH`) is off by default; the file holds login cookies and is equivalent to credentials.
@@ -66,7 +75,8 @@ This repository is a single-workflow Python + Playwright project for Chaoxing co
 - Baseline: `python -m py_compile main.py`.
 - CLI smoke: `python main.py --help`.
 - Unit suite: `python -m unittest discover -s tests -t .`.
-- Lint (undefined names / redefinitions only): `pipx run ruff check --select F821,F811,E9 main.py tests`.
+- Lint (undefined names / redefinitions only): `pipx run ruff check --select F821,F811,E9 main.py gui.py tests`.
+- UI: `tests/test_gui.py` covers the non-window logic. That includes `.env` round-trips through python-dotenv, a hermetic `main.py` run proving form values beat a stale `.env`, process-tree stop, icon encoding, and a real shortcut read back through the Windows Shell. Window layout is checked by screenshots against a fake `main.py`, not in CI.
 - PowerShell forwarding smoke: `.\run_chaoxing.ps1 --help`.
 - Use local/offline Playwright fixtures for selector and recovery changes when practical. `tests/test_course_card_dom.py` runs the course-candidate JS against a static HTML fixture in a real browser engine. It skips only when neither bundled Chromium nor system Chrome is available. GitHub's `windows-latest` runner ships Chrome, so CI runs it (PR #11: 52 tests, none skipped).
 - Use bounded live Chaoxing runs only when authorized and configured.

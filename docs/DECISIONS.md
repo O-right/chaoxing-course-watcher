@@ -105,3 +105,11 @@ Decision: The live course list wraps `a.color1` in `h3.inlineBlock`. When a matc
 Reason: Without an href, the title wrapper could not be grouped with its own link, so the course was rejected as ambiguous against itself. Merging by text instead would also merge two genuinely different courses with the same title. The live list contains such a pair, and merging them would open one at random.
 
 Consequence: An unlinked title in a card with several distinct links still fails as ambiguous. `--course-url` remains the exact fallback.
+
+## 2026-10-20: The Desktop UI Is A Thin Tkinter Shell Over `main.py`
+
+Decision: `gui.py` uses Tkinter from the standard library and runs `main.py` as a subprocess, passing settings as `CX_*` environment variables. It does not import or reimplement any workflow logic. When asked to remember settings, it updates only its managed keys in `.env`.
+
+Reason: The owner asked for a simple, polished UI with only useful features. Tkinter adds no dependency. A local web UI would need a server that accepts the account password over HTTP and would add a framework. A hosted page cannot start local processes at all. A subprocess keeps `main.py` the single source of truth for completion, failure, and exit codes, and a crash in the workflow cannot take the window down. The owner's `.env` also holds unrelated secrets, so rewriting the whole file was never an option.
+
+Consequence: The UI learns progress by parsing log lines, so `tests/test_gui.py` asserts that the parsed markers still exist in `main.py`. Values python-dotenv cannot round-trip are not saved. Shortcuts must carry the window's AppUserModelID for taskbar pinning to work, which needs `IPropertyStore`; `WScript.Shell` cannot set it.

@@ -2,12 +2,14 @@
 
 ## Snapshot
 
-- Phase: Post-release hardening is merged to `main` (PR #11) and live-validated on a real course, except the multi-video path.
-- Current focus: Dependabot follow-ups; the multi-video live check is deferred by the owner.
-- Branch: `main`. `fix/silent-completion-and-resilience` was merged and deleted.
+- Phase: Post-release hardening is merged to `main` (PR #11) and live-validated on a real course, except the multi-video path. A desktop UI is up for review.
+- Current focus: review the desktop UI PR (`feat/desktop-ui`); the owner merges the four Dependabot PRs; the multi-video live check is deferred by the owner.
+- Branch: `feat/desktop-ui`, based on `main` at `65a509a`.
 
 ## Completed Recently
 
+- 2026-10-20 desktop UI on `feat/desktop-ui`: `gui.py` (Tkinter, no new dependencies) runs `main.py` as a subprocess and shows status, video progress, and colored logs. Also `start_ui.bat`, `python gui.py --create-shortcuts` (Desktop and Start Menu shortcuts that share the window's AppUserModelID), and `CX_FAST_ACTIONS` as the env form of `--fast-actions`. Suite 52 -> 81. Rationale in `docs/DECISIONS.md` (2026-10-20).
+- 2026-10-20 Dependabot PRs #5, #6, #9, and #10 were rebased onto `main` (`65a509a`). All four are mergeable with green CI on the current workflow (ruff, DOM fixtures). The rebase moved #9 to `playwright 1.64.0`.
 - 2026-10-20 PR #11 merged to `main`. CI passed on Python 3.10 and 3.11: ruff (the `pipx` step's first hosted run), 52 tests with none skipped (the DOM fixtures ran against the runner's Chrome), compile, and CLI help.
 - 2026-10-19 bounded live validation passed on an authorized 6-task-point course: the 4 remaining units were watched and the platform shows 6/6 (100%). The last-catalog-entry fix was exercised for real. Record: `docs/runs/2026-10-19-live-course-validation.md`.
 - `a8c91ae`: the live run exposed two defects in this branch's own changes, both fixed with regression tests. The post-login check raced the redirect, and the first fix polled a stale cached URL. An unlinked course-title wrapper made one course ambiguous with itself. Suite 44 -> 52.
@@ -15,12 +17,15 @@
 
 ## In Progress
 
-- None.
+- Desktop UI PR from `feat/desktop-ui`: waiting for CI and owner review.
 
 ## Next Up
 
-- Let Dependabot PR #5 (`setup-python 7.0.0`) and #6 (`checkout 7.0.1`) rebase onto the new `main`, since both touch `ci.yml`, then review and merge them.
-- Review #9 (`playwright 1.63.0`); the DOM-fixture tests now exercise the browser engine in CI. Review #10 (`python-dotenv 1.2.4`).
+- Owner merges Dependabot #5 (`setup-python 7.0.0`) and #6 (`checkout 7.0.1`), then #9 (`playwright 1.64.0`). The agent's merge attempt was blocked by the auto-mode permission check.
+- After #9 merges, comment `@dependabot rebase` on #10 (`python-dotenv 1.2.4`). Both PRs change adjacent lines of `requirements.txt`, so #10 will conflict.
+- After #6 merges, fix the trailing `# v4` comment on the checkout pin in `ci.yml`; Dependabot kept it at 7.0.1.
+- After #9 and #10 merge, run `python -m pip install -r requirements.txt` locally. Run `python -m playwright install chromium` too if you use the bundled browser.
+- Run one real course from the UI with the browser visible, to confirm the UI path end to end.
 - Deferred by owner: a live run on a task point with **multiple videos** (and ideally multiple resource cards).
 - Decide how the card-tabs warning should behave on the new chapter-detail layout (see TASKS).
 
@@ -30,14 +35,26 @@
 
 ## Active Files
 
-- `main.py` — the whole workflow; this round changed `wait_until_left_login_page` and the candidate JS in `course_candidate_details`.
-- `tests/test_login_check.py`, `tests/test_course_card_dom.py`, `tests/test_course_matching.py` — regression coverage for the live-run fixes.
-- `.github/workflows/ci.yml` — ruff step and compile list; expect conflicts with Dependabot #5/#6.
+- `gui.py` — the desktop UI: form <-> `.env` <-> child environment, log parsing, process runner, icon, and shortcuts.
+- `tests/test_gui.py` — 26 tests for the UI's non-window logic, including a hermetic run of `main.py` and a real shortcut read back through the Windows Shell.
+- `main.py` — the whole workflow; this round only added `CX_FAST_ACTIONS`.
+- `start_ui.bat` — double-click launcher (`pythonw`, falls back to `python`).
+- `.github/workflows/ci.yml` — ruff and compile now include `gui.py` and the new tests. Dependabot #5/#6 change other lines.
 - `.env.example` — must document every `CX_*` read (enforced by `tests/test_env_documented.py`).
-- `docs/runs/2026-10-19-live-course-validation.md` — live evidence and open follow-ups.
 
 ## Validation
 
+- Ran for the desktop UI (2026-10-20):
+  - Unit suite: 81 tests OK, none skipped.
+  - ruff 0.17.1 `--select F821,F811,E9 main.py gui.py tests` and full `F` on the new files: passed.
+  - `py_compile` on every file; `python main.py --help`; `python gui.py --help`; `git diff --check`: clean.
+  - Mutation checks: dropping the explicit empty env values or the trailing-backslash guard makes a test fail.
+  - Screenshots with a fake `main.py` covered the idle, running, cap-reached, and failed states.
+  - `--create-shortcuts` created the owner's Desktop and Start Menu shortcuts, and the Shell read back the AppUserModelID. Launching from the Desktop shortcut opened the window under `pythonw` with no console window.
+  - Real `.env` untouched.
+- Not run for the desktop UI:
+  - A real Chaoxing run started from the UI.
+  - Pinning to the taskbar (Windows only allows this by hand).
 - Ran (2026-10-19/20):
   - Unit suite: 52 tests OK; the 3 DOM-fixture tests ran against system Chrome.
   - `py_compile` on `main.py` and every test file.
@@ -63,5 +80,8 @@
 - `CX_STORAGE_STATE_PATH` (off by default) stores login cookies; keep it outside the repo. `CX_SELECTOR_VIDEO_PLAY_CONTROL` uses `;` between priority groups.
 - The owner accepts the existing Git history metadata exposure. tutai is not a viable runner until its Chaoxing network block is resolved.
 - Logs, screenshots, `.env`, and storage state stay untracked. Live logs and screenshots show the account display name and school.
+- With 「记住设置」 checked, the UI writes its managed `CX_*` keys (password included) into `.env` and leaves every other line alone. The owner's `.env` also holds unrelated secrets, so never rewrite it wholesale. Values python-dotenv cannot round-trip (`${`, a trailing backslash, newlines) are skipped and logged.
+- UI run logs go to `logs/ui/`. The shortcut icon `app.ico` is generated and gitignored. Shortcuts store absolute paths to this clone and to the current Python, so re-run `python gui.py --create-shortcuts` after moving either.
+- In Claude Code, `! python gui.py` blocks the session until the window closes; use the Desktop shortcut or `start_ui.bat`.
 
-_Last sync: 2026-10-20 · Claude Code_
+_Last sync: 2026-10-20 (desktop UI) · Claude Code_
