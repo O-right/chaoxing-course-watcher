@@ -84,6 +84,7 @@ CX_COURSE_KEYWORD=课程名称关键词
 | `CX_HEADLESS` | 是否使用无头模式，首次运行建议设为 `false` |
 | `CX_MAX_CHAPTERS` | 单次最多连续处理的任务点数量 |
 | `CX_PLAYBACK_RATE` | 尝试设置的播放倍速，实际值可能受平台限制 |
+| `CX_FAST_ACTIONS` | 等同于 `--fast-actions`，默认 `false`；尚未在真实课程上验证 |
 | `CX_AUTO_COMMITMENT` | 是否自动确认学习承诺，默认 `false`；仅在本人阅读并同意后开启 |
 | `CX_MANUAL_VERIFICATION_WAIT_SECONDS` | 遇到人工验证时等待手动处理的秒数 |
 | `CX_SCREENSHOT_DIR` | 失败截图目录，默认是 `logs/screenshots` |
@@ -97,7 +98,23 @@ CX_COURSE_KEYWORD=课程名称关键词
 
 ### 4. 运行
 
-推荐使用 PowerShell 启动脚本：
+最省事的方式是图形界面：双击项目目录里的 `start_ui.bat`，或者运行：
+
+```powershell
+python gui.py
+```
+
+想以后不进项目目录也能打开，可以运行一次：
+
+```powershell
+python gui.py --create-shortcuts
+```
+
+它会在桌面和开始菜单各放一个「学习通刷课助手」图标。之后双击桌面图标，或按 Win 键搜索「学习通」就能打开；打开后在任务栏图标上右键可以固定到任务栏。项目文件夹换了位置或换了 Python 后，重新运行一次即可。
+
+在窗口里填好账号、密码和课程名称，点「开始运行」即可。界面会实时显示当前任务点、视频进度和彩色日志，每次运行的日志另存到 `logs/ui/`，失败截图可以一键打开。勾选「记住设置」后，表单内容（包括密码）会写入本地 `.env`。写入时只改动界面管理的那几项，其他配置原样保留。图形界面只是 `main.py` 的外壳，完成判定、失败处理和退出码都和命令行一致。
+
+命令行方式推荐使用 PowerShell 启动脚本：
 
 ```powershell
 .\run_chaoxing.ps1 --course "课程名称关键词" --browser-channel chrome
@@ -199,8 +216,8 @@ python main.py --help
 
 ```powershell
 python -m unittest discover -s tests -t .
-python -m py_compile main.py tests\test_closed_page_guards.py tests\test_course_matching.py tests\test_env_documented.py tests\test_video_progress.py
-pipx run ruff check --select F821,F811,E9 main.py tests
+python -m py_compile main.py gui.py tests\test_closed_page_guards.py tests\test_course_card_dom.py tests\test_course_matching.py tests\test_env_documented.py tests\test_fast_actions.py tests\test_gui.py tests\test_login_check.py tests\test_video_progress.py
+pipx run ruff check --select F821,F811,E9 main.py gui.py tests
 python main.py --help
 git diff --check
 ```
@@ -219,6 +236,8 @@ git diff --check
 ```text
 .
 ├── main.py                       # 主程序入口
+├── gui.py                        # 图形界面（Tkinter，无额外依赖）
+├── start_ui.bat                  # 双击启动图形界面
 ├── run_chaoxing.ps1              # PowerShell 启动脚本
 ├── requirements.txt              # Python 依赖
 ├── LICENSE                       # MIT 开源许可证

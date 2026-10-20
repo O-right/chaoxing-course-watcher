@@ -14,7 +14,8 @@
 - Run directly: `python main.py --course "课程名称关键词" --max-chapters 200 --headless --fast-actions --browser-channel chrome`
 - Syntax check: `python -m py_compile main.py`
 - Unit tests: `python -m unittest discover -s tests -t .`
-- Lint: `pipx run ruff check --select F821,F811,E9 main.py tests`
+- Lint: `pipx run ruff check --select F821,F811,E9 main.py gui.py tests`
+- Desktop UI: `python gui.py` (or double-click `start_ui.bat`); `python gui.py --create-shortcuts` adds Desktop and Start Menu shortcuts
 - CLI help: `python main.py --help`
 
 ## MUST DO

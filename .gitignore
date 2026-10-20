@@ -39,6 +39,8 @@ screenshots/
 *.mp4
 *.jsonl
 tmp_*.json
+# gui.py --create-shortcuts 生成的快捷方式图标
+/app.ico
 
 # Browser / session artifacts
 playwright/.auth/

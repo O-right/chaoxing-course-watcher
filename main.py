@@ -166,6 +166,8 @@ CONFIG: Dict[str, Any] = {
     "unit_retries": env_int("CX_UNIT_RETRIES", 2),
     "stop_when_no_next": env_flag("CX_STOP_WHEN_NO_NEXT", "true"),
     "auto_commitment": env_flag("CX_AUTO_COMMITMENT", "false"),
+    # 等同于 --fast-actions，方便写进 .env 长期生效（图形界面也靠它记住这个选项）。
+    "fast_actions": env_flag("CX_FAST_ACTIONS"),
     "commitment_timeout_ms": env_int("CX_COMMITMENT_TIMEOUT_MS", 10_000),
     "login_check_timeout_ms": env_int("CX_LOGIN_CHECK_TIMEOUT_MS", 8_000),
     "next_navigation_timeout_ms": env_int("CX_NEXT_NAVIGATION_TIMEOUT_MS", 10_000),
@@ -2703,7 +2705,11 @@ def build_config_from_args(base_config: Dict[str, Any]) -> Dict[str, Any]:
     parser.add_argument("--max-chapters", type=int, help="最多连续处理的章节数，会覆盖 CX_MAX_CHAPTERS")
     parser.add_argument("--headless", action="store_true", help="使用无头浏览器运行")
     parser.add_argument("--headed", action="store_true", help="使用可见浏览器运行")
-    parser.add_argument("--fast-actions", action="store_true", help="将点击/输入、课件停留、视频完成轮询缩短，用于授权测试")
+    parser.add_argument(
+        "--fast-actions",
+        action="store_true",
+        help="将点击/输入、课件停留、视频完成轮询缩短，用于授权测试；也可设 CX_FAST_ACTIONS=true",
+    )
     parser.add_argument("--progress-poll-seconds", type=float, help="视频进度轮询间隔，会覆盖 CX_PROGRESS_POLL_SECONDS")
     parser.add_argument("--courseware-hold-seconds", type=float, help="非视频课件打开后的停留时间，会覆盖 CX_COURSEWARE_HOLD_SECONDS")
     parser.add_argument(
@@ -2732,6 +2738,8 @@ def build_config_from_args(base_config: Dict[str, Any]) -> Dict[str, Any]:
     if args.headed:
         config["headless"] = False
     if args.fast_actions:
+        config["fast_actions"] = True
+    if config["fast_actions"]:
         config["delay_range_seconds"] = (0.1, 0.3)
         config["slow_mo_ms"] = 0
         config["progress_poll_seconds"] = min(float(config["progress_poll_seconds"]), 3.0)
