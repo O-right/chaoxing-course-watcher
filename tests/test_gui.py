@@ -388,13 +388,16 @@ class IconTests(unittest.TestCase):
 class ShortcutTests(unittest.TestCase):
     def read_back(self, link):
         # 用系统自带的 Shell 接口独立读回，而不是拿同一套 ctypes 代码自证。
+        # 不用 WScript.Shell：路径里有系统 ANSI 代码页表示不了的字符时（英文版 Windows 上的中文目录），
+        # 它会读到一个空快捷方式。Shell.Application 全程走 Unicode。
         script = (
             "[Console]::OutputEncoding = [Text.Encoding]::UTF8;"
             "$p = $env:SHORTCUT_PATH;"
-            "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($p);"
-            "$f = (New-Object -ComObject Shell.Application).Namespace((Split-Path $p)).ParseName((Split-Path $p -Leaf));"
-            "@{target=$s.TargetPath; args=$s.Arguments; dir=$s.WorkingDirectory; icon=$s.IconLocation;"
-            " desc=$s.Description; id=$f.ExtendedProperty('System.AppUserModel.ID')} | ConvertTo-Json"
+            "$item = (New-Object -ComObject Shell.Application).Namespace((Split-Path $p)).ParseName((Split-Path $p -Leaf));"
+            "$link = $item.GetLink; $icon = '';"
+            "$index = $link.GetIconLocation([ref]$icon);"
+            "@{target=$link.Path; args=$link.Arguments; dir=$link.WorkingDirectory; icon=$icon; index=$index;"
+            " desc=$link.Description; id=$item.ExtendedProperty('System.AppUserModel.ID')} | ConvertTo-Json"
         )
         result = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
@@ -415,12 +418,13 @@ class ShortcutTests(unittest.TestCase):
             self.assertEqual(icon.read_bytes(), gui.icon_ico())
 
             info = self.read_back(links[0])
+            self.assertTrue(info["target"], info)
             self.assertTrue(os.path.samefile(info["target"], gui.gui_launcher()))
             self.assertEqual(info["args"], f'"{gui.GUI_SCRIPT}"')
             self.assertTrue(os.path.samefile(info["dir"], gui.ROOT))
-            icon_file, icon_index = info["icon"].rsplit(",", 1)
-            self.assertTrue(os.path.samefile(icon_file, icon))
-            self.assertEqual(icon_index, "0")
+            self.assertTrue(os.path.samefile(info["icon"], icon))
+            self.assertEqual(info["index"], 0)
+            self.assertEqual(info["desc"], f"打开{gui.APP_NAME}")
             self.assertEqual(info["id"], gui.APP_ID)
 
     def test_shortcut_folders_exist(self):
