@@ -110,16 +110,16 @@
 - [x] Add `CX_FAST_ACTIONS` so the fast-mode checkbox can be stored; document it in `.env.example`.
 - [x] Add `start_ui.bat` and `python gui.py --create-shortcuts` (Desktop and Start Menu, matching AppUserModelID, generated `app.ico`).
 - [x] Add `tests/test_gui.py` and `tests/test_fast_actions.py`; suite 52 -> 81. Extend ruff and compile in CI to `gui.py` and the new tests.
-- [ ] Owner reviews and merges the desktop UI PR.
+- [x] Merge the desktop UI via PR #12 (owner approved merging directly on 2026-10-20).
 - [ ] Run one real course from the UI with the browser visible.
 
 ## Future Work
 
 - [x] Dependabot PR #2, #3, #4, #7 were closed as superseded; #8 (`python-dotenv 1.2.3`) was merged on 2026-09-27.
 - [x] Rebase Dependabot PR #5, #6, #9, #10 onto `main` after PR #11 (2026-10-20). All four were green on the current workflow, and #9 became `playwright 1.64.0`.
-- [ ] Merge Dependabot PR #5 (`actions/setup-python 7.0.0`) and #6 (`actions/checkout 7.0.1`); after #6, fix the stale `# v4` comment on the checkout pin.
-- [ ] Merge Dependabot PR #9 (`playwright 1.64.0`); its CI ran 52 tests with the DOM fixtures, none skipped.
-- [ ] Rebase and merge Dependabot PR #10 (`python-dotenv 1.2.4`) after #9; both change adjacent `requirements.txt` lines.
+- [x] Merge Dependabot PR #5 (`actions/setup-python 7.0.0`) and #6 (`actions/checkout 7.0.1`, rebased again after #5); fix the stale `# v4` comment on the checkout pin (2026-10-20).
+- [x] Merge Dependabot PR #9 (`playwright 1.64.0`); its CI ran 52 tests with the DOM fixtures, none skipped (2026-10-20).
+- [x] Rebase and merge Dependabot PR #10 (`python-dotenv 1.2.4`) after #9 (2026-10-20).
 - [ ] Decide how `warn_if_card_tabs_missing` should behave on the new chapter-detail layout: it fires and screenshots on every single-video unit. This needs a multi-card unit in that layout to decide.
 - [ ] Confirm the `--fast-actions` timing changes on a real course before relying on them.
 - [ ] Consider printing the closest course candidates on `no_match`, so a near-miss keyword is diagnosable without the screenshot.
