@@ -3,7 +3,7 @@
 ## Setup
 
 - [x] Create standalone GitHub repository `O-right/chaoxing-course-watcher`.
-- [x] Clone standalone local repository at `D:\chaoxing_course_watcher`.
+- [x] Clone standalone local repository at `D:\chaoxing_course_watcher` (the active clone is now `D:\dev\active\chaoxing_course_watcher`).
 - [x] Include `main.py`, `run_chaoxing.ps1`, `requirements.txt`, `.gitignore`, and README.
 - [x] Add project handoff docs and repo rules.
 
@@ -102,13 +102,24 @@
 - [x] Add `tests/test_login_check.py`, `tests/test_course_card_dom.py` (real browser engine, skips without Chromium/Chrome), and href-grouping cases; suite 44 -> 52.
 - [x] Mutation-check both fixes, run ruff, compile, CLI help, launcher help, and `git diff --check`.
 
+## Desktop UI (branch `feat/desktop-ui`)
+
+- [x] Add `gui.py`: Tkinter form, status card, colored log console, per-run log file, stop that ends the whole process tree. It runs `main.py` as a subprocess and adds no dependencies.
+- [x] Pass every UI-managed key to the child explicitly, empty values included, so a stale `.env` value never wins.
+- [x] Save only the UI-managed keys into `.env` (atomic, CRLF kept, other lines untouched). Skip values python-dotenv cannot round-trip.
+- [x] Add `CX_FAST_ACTIONS` so the fast-mode checkbox can be stored; document it in `.env.example`.
+- [x] Add `start_ui.bat` and `python gui.py --create-shortcuts` (Desktop and Start Menu, matching AppUserModelID, generated `app.ico`).
+- [x] Add `tests/test_gui.py` and `tests/test_fast_actions.py`; suite 52 -> 81. Extend ruff and compile in CI to `gui.py` and the new tests.
+- [x] Merge the desktop UI via PR #12 (owner approved merging directly on 2026-10-20).
+- [ ] Run one real course from the UI with the browser visible.
+
 ## Future Work
 
 - [x] Dependabot PR #2, #3, #4, #7 were closed as superseded; #8 (`python-dotenv 1.2.3`) was merged on 2026-09-27.
-- [ ] Review and merge Dependabot PR #5 (`actions/setup-python 7.0.0`) after this branch merges; it touches `ci.yml`.
-- [ ] Review and merge Dependabot PR #6 (`actions/checkout 7.0.1`) after this branch merges; it touches `ci.yml`.
-- [ ] Review Dependabot PR #9 (`playwright 1.63.0`) independently; run the suite including the DOM-fixture tests before merging.
-- [ ] Review Dependabot PR #10 (`python-dotenv 1.2.4`).
+- [x] Rebase Dependabot PR #5, #6, #9, #10 onto `main` after PR #11 (2026-10-20). All four were green on the current workflow, and #9 became `playwright 1.64.0`.
+- [x] Merge Dependabot PR #5 (`actions/setup-python 7.0.0`) and #6 (`actions/checkout 7.0.1`, rebased again after #5); fix the stale `# v4` comment on the checkout pin (2026-10-20).
+- [x] Merge Dependabot PR #9 (`playwright 1.64.0`); its CI ran 52 tests with the DOM fixtures, none skipped (2026-10-20).
+- [x] Rebase and merge Dependabot PR #10 (`python-dotenv 1.2.4`) after #9 (2026-10-20).
 - [ ] Decide how `warn_if_card_tabs_missing` should behave on the new chapter-detail layout: it fires and screenshots on every single-video unit. This needs a multi-card unit in that layout to decide.
 - [ ] Confirm the `--fast-actions` timing changes on a real course before relying on them.
 - [ ] Consider printing the closest course candidates on `no_match`, so a near-miss keyword is diagnosable without the screenshot.

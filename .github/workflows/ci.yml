@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # 本 workflow 只读代码，不 push、不调 API。
           # 不留 token 在 .git/config 里给后续 step。
@@ -49,13 +49,13 @@ jobs:
         # 只挑这个代码库真正会踩的坑：2342 行单文件、69 个方法里打错的名字或
         # 重复定义的方法，正好落在单测走不到的分支上，运行时只会变成
         # "自动化流程出现未预期异常" + 退出码 1，连 traceback 都没有。
-        run: pipx run ruff check --select F821,F811,E9 main.py tests
+        run: pipx run ruff check --select F821,F811,E9 main.py gui.py tests
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -t .
 
       - name: Compile Python files
-        run: python -m py_compile main.py tests\test_closed_page_guards.py tests\test_course_card_dom.py tests\test_course_matching.py tests\test_env_documented.py tests\test_login_check.py tests\test_video_progress.py
+        run: python -m py_compile main.py gui.py tests\test_closed_page_guards.py tests\test_course_card_dom.py tests\test_course_matching.py tests\test_env_documented.py tests\test_fast_actions.py tests\test_gui.py tests\test_login_check.py tests\test_video_progress.py
 
       - name: Check CLI help
         run: python main.py --help
